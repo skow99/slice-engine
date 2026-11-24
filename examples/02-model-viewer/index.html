@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Model viewer</title>
+<link rel="stylesheet" href="../shared/page.css">
+<style>
+  form { position: fixed; top: 10px; right: 10px; background: #141c24ee; border: 1px solid #4a5a68; border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; font-size: 13px; max-width: 220px; }
+  form label { display: flex; justify-content: space-between; gap: 8px; }
+  form input[type=number] { width: 52px; box-sizing: border-box; background: #0c1013; color: #e8efed; border: 1px solid #4a5a68; border-radius: 4px; }
+  form b { color: #f6c95e; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<form id="sheet">
+  <b>Your slice sheet</b>
+  <span>Drop a PNG on the page, or pick one. Slices left to right, bottom slice first, front pointing up.</span>
+  <label>Slice width <input type="number" name="w" value="16" min="1"></label>
+  <label>Slice height <input type="number" name="h" value="0" min="0" title="0: same as width"></label>
+  <label>Columns <input type="number" name="columns" value="0" min="0" title="0: one row"></label>
+  <input type="file" name="file" accept="image/png">
+</form>
+<p class="hint">Left / Right: turn &nbsp; L: time of day &nbsp; <a href="../">all examples</a></p>
+<div class="touch">
+  <div class="group"><button data-action="left">&#9664;</button><button data-action="right">&#9654;</button></div>
+  <div class="group"><button data-action="a">L</button></div>
+</div>
+<script type="module" src="main.js"></script>
+</body>
+</html>

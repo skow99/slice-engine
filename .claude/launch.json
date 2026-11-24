@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "slice-engine-examples",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/serve.js", "8093"],
+      "port": 8093
+    }
+  ]
+}

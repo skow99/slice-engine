@@ -1,0 +1,11 @@
+/* Page around an example: the game fills the window; text and touch buttons sit on top. */
+html, body { margin: 0; height: 100%; background: #0c1013; color: #c8d4dc; font: 14px/1.4 system-ui, sans-serif; overflow: hidden; }
+#game { position: fixed; inset: 0; }
+.hint { position: fixed; left: 12px; bottom: 10px; opacity: .7; pointer-events: none; }
+.hint a { pointer-events: auto; color: #8fd4f2; }
+/* Touch buttons: shown only on touch screens. data-action names the input action. */
+.touch { position: fixed; inset: auto 0 16px 0; display: none; justify-content: space-between; padding: 0 16px; pointer-events: none; }
+.touch .group { display: flex; gap: 10px; pointer-events: auto; }
+.touch button { width: 64px; height: 64px; border-radius: 16px; border: 2px solid #4a5a68; background: #141c24cc; color: #e8efed; font: bold 20px system-ui; touch-action: none; user-select: none; -webkit-user-select: none; }
+.touch button.down { background: #2c4458; }
+@media (pointer: coarse) { .touch { display: flex; } .hint { display: none; } }
