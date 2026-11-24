@@ -142,3 +142,7 @@ fixed-step clock, the sound building blocks and much of the input code come from
 Slice Drive (`dist/js/` in that project), with the racing parts taken out. The
 scene, camera, screen, loop, model builders, collisions, saves and menus were
 written for the engine, after the way Slice Drive does them.
+
+## Licence
+
+MIT: see [LICENSE](LICENSE).

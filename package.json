@@ -2,6 +2,7 @@
   "name": "slice-engine",
   "version": "1.0.0",
   "description": "A small engine for sprite-stacked (slice) pixel-art games in the browser: no build step, no dependencies.",
+  "license": "MIT",
   "type": "module",
   "main": "src/index.js",
   "exports": {
