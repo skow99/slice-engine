@@ -134,15 +134,25 @@ export function fromLayers(layers, key) {
  * given), bottom slice first, each a top view with the front pointing up.
  * Every distinct opaque colour becomes a material (at most 255); pixels with
  * alpha < 128 are empty. kinds: {'#ffcc00': 'glow', ...} sets materials' kinds. */
-export function fromSlicePixels(rgba, width, height, {sliceWidth, sliceHeight = sliceWidth, count, columns, kinds = {}} = {}) {
-  if (!sliceWidth) throw new Error('fromSlicePixels: sliceWidth is needed');
-  columns = columns || Math.floor(width / sliceWidth);
-  count = count || columns * Math.floor(height / sliceHeight);
-  const colours = new Map(), ids = [], w = sliceWidth, h = sliceHeight;
+export function fromSlicePixels(rgba, width, height, {sliceWidth, sliceHeight = sliceWidth, count, columns, gap = 0, kinds = {}} = {}) {
+  if (!Number.isInteger(sliceWidth) || sliceWidth < 1) throw new Error('fromSlicePixels: a positive sliceWidth is needed');
+  if (!Number.isInteger(sliceHeight) || sliceHeight < 1 || !Number.isInteger(gap) || gap < 0) {
+    throw new RangeError('fromSlicePixels: sliceHeight and gap must be whole pixels');
+  }
+  const w = sliceWidth, h = sliceHeight, strideX = w + gap, strideY = h + gap;
+  const maxColumns = Math.floor((width + gap) / strideX);
+  columns ??= maxColumns;
+  const maxCount = columns * Math.floor((height + gap) / strideY);
+  count ??= maxCount;
+  if (!Number.isInteger(columns) || columns < 1 || columns > maxColumns ||
+      !Number.isInteger(count) || count < 1 || count > maxCount || rgba.length < width * height * 4) {
+    throw new RangeError('fromSlicePixels: slices must fit in the supplied image');
+  }
+  const colours = new Map(), ids = [];
   const kindOf = new Map(Object.entries(kinds).map(([hex, kind]) => [hexToRgb(hex).join(','), kind]));
   const grid = new Uint8Array(w * h * count);
   for (let z = 0; z < count; z++) {
-    const ox = (z % columns) * w, oy = Math.floor(z / columns) * h;
+    const ox = (z % columns) * strideX, oy = Math.floor(z / columns) * strideY;
     for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
       const at = ((oy + r) * width + ox + c) * 4;
       if (rgba[at + 3] < 128) continue;
@@ -150,7 +160,10 @@ export function fromSlicePixels(rgba, width, height, {sliceWidth, sliceHeight = 
       let id = colours.get(name);
       if (id === undefined) {
         if (colours.size >= 255) throw new Error('fromSlicePixels: more than 255 colours; reduce the palette');
-        id = colours.size + 1; colours.set(name, id); ids.push({rgb, kind: kindOf.get(name) || 'matte'});
+        id = colours.size + 1;
+        colours.set(name, id);
+        const settings = kindOf.get(name);
+        ids.push(typeof settings === 'object' ? {...settings, rgb} : {rgb, kind: settings || 'matte'});
       }
       grid[(z * h + (h - 1 - r)) * w + (w - 1 - c)] = id;
     }

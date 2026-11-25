@@ -3,9 +3,9 @@
 Everything imports from `src/index.js`:
 
 ```js
-import {Voxel, Model, Scene, Camera, Screen, Loop, Clock, Input, Sfx, Particles, Gfx, Ground, Trees,
+import {Voxel, Model, Scene, Camera, Screen, Loop, Clock, Input, Sfx, Particles, Gfx, Ground, Sky, Waves, Reflections, Trees,
   Collide, Storage, Menu, createScreen, createScene, createCamera, startLoop, createStore, createMenu,
-  createGrid, applyGrade} from './src/index.js';
+  createGrid, createReflections, applyGrade, VERSION} from './src/index.js';
 ```
 
 A *handle* below is a baked picture: `{canvas, dx, dy, w, h}`, drawn with its
@@ -19,6 +19,7 @@ anchor (the model's centre on the ground) at a point: `Voxel.draw(context, handl
 
 A new model of `w × h × count` voxels. `colors[i]` is material `i + 1`:
 `[r, g, b]` (matte) or `{rgb: [r, g, b], kind}` (`'matte' | 'gloss' | 'glass' | 'glow' | 'ink'`).
+Optional `lightContrast` scales the material's baked brightness variation and tint. It defaults to 1. A value of 0 uses the palette colour at every light level.
 Every shape takes an `id`: a material number, `0` to carve out, or a function
 `(x, y, z) => id` for patterns. Voxels outside the grid are ignored.
 
@@ -44,8 +45,8 @@ top view with the front pointing up. `key`: `{char: [r,g,b] | '#rrggbb' | {rgb, 
 A PNG slice sheet: slices of `sliceWidth × sliceHeight` left to right (then in
 rows when `columns` is given), bottom first, front up. Each distinct opaque
 colour is a material (255 at most); alpha < 128 is empty.
-Options: `sliceWidth` (needed), `sliceHeight` (default: width), `count`,
-`columns`, `kinds: {'#ffcc00': 'glow'}`. `Model.loadImage(url)` → `Promise<Image>`.
+Options: `sliceWidth` (needed), `sliceHeight` (default: slice width), `count`,
+`columns`, `gap` (whole pixels between adjacent slices), and `kinds: {'#ffcc00': 'glow'}`. A colour can also specify `{kind, lightContrast}`. Supply `count` if the last row has unused cells. `Model.loadImage(url)` → `Promise<Image>`.
 
 ### `Model.toSlicePixels(model, {columns, gap})` → `{rgba, width, height, ...}`
 
@@ -85,7 +86,8 @@ Most games only need `Model.thing` and `Scene`. Use these for more control.
 | `createModel(w, h, count, materials)` | A raw model; `materials[0]` must be `null`. Fill `model.vox[(z * h + y) * w + x]`. |
 | `sprite(model, variant, palette, direction, options)` | Bake or fetch one sprite. `direction` from `directionOf(turn, frames)`, `turn = heading - PI/2`. Options: `frames`, `shear` (lean the stack sideways: body roll), `pose: {pitch, heave, scale}` (with `model.suspension = [fromZ, toZ]`: only the body moves), `override` + `only` (swap materials of chosen voxels; with `only`, just those: overlays such as lit lamps). |
 | `shadow(model, direction, frames)` | Bake or fetch the ground shadow. |
-| `tumble(model, variant, palette, direction, pitchStep, rollStep, steps)` | A model rolled and pitched in the air (flips), `steps` per turn. |
+| `tumble(model, variant, palette, direction, pitchStep, rollStep, steps, options)` | Bake a rolled and pitched model, with `steps` per turn. `options.pivotZ` sets the rotation height and defaults to mid-height. `options.mirrored` reflects the geometry above that plane before projection. `options.frames` sets the heading count (64 by default), matching `Thing.direction()`. |
+| `poseTransform(direction, pitchStep, rollStep, steps = 16, frames = 64)` | Returns `(x, y, z) => {x, y, z}` to rotate an offset from the pose pivot. Use it for attachments that must follow the same rounded pose as the sprite. |
 | `draw(context, handle, x, y)` | Draw a handle at a point (rounded to whole pixels). |
 | `directionOf(turn, frames)` | A turn (radians) to a frame number. |
 | `setLighting(id)`, `addPreset(id, preset)` | Time of day; `PRESETS`, `PRESET_IDS`; live `lighting`, `lightingId`, `SHADOW_X`, `SHADOW_Y`. |
@@ -105,8 +107,10 @@ Most games only need `Model.thing` and `Scene`. Use these for more control.
 An item is `{x, y}` plus one of: `{thing, heading}`, `{tree: 'oak0', bend}`,
 `{sprite, shadow}` (handles), or `{draw(context, sx, sy)}`. Optional: `z`
 (height above ground), `sortY`, `layer: 'ground' | 'overlay'`, `noShadow`,
-`alpha`. `view` is `{viewX, viewY, viewW, viewH}` (a camera). `draw` returns
-`{items, drawn, shadows, culled}`.
+`alpha`. Pass `{viewX, viewY, viewW, viewH}` for native pixels or a
+`Camera.view()` for fractional placement and scaling. With zoom, custom
+`draw` callbacks receive unscaled local coordinates inside an already scaled
+context. `draw` returns `{items, drawn, shadows, culled}`.
 
 ---
 
@@ -126,12 +130,25 @@ An item is `{x, y}` plus one of: `{thing, heading}`, `{tree: 'oak0', bend}`,
 
 ---
 
+`Camera.view(subject, {width, height}, scale = 1, previous = subject, blend = 1)`
+centres a view on the position interpolated from `previous` to `subject`.
+`scale` is logical screen pixels per world unit. The returned `x, y` and
+`viewX, viewY` are the world origin, `w, h` are logical screen dimensions,
+`viewW, viewH` are the dimensions in world units, and `position` is the
+interpolated centre. `toScreen({x, y})` and `toWorld({x, y})` convert points.
+
 ## Screen (`screen.js`)
 
-`createScreen({width, height, parent, background, wholePixels, onRestore, onLost})` → screen
+`createScreen({width, height, parent, background, wholePixels, pixelDensity, onRestore, onLost})` → screen
 
 `screen.canvas`, `screen.context`, `screen.width`, `screen.height`, `screen.scale`
-(device pixels per game pixel), `fit()`, `toGame(clientX, clientY)`, `clear(color)`.
+(display device pixels per logical game pixel), `fit()`, `toGame(clientX, clientY)`,
+`clear(color)`, and `destroy()` (remove the canvas and its listeners).
+
+`pixelDensity: [min, max]` enables adaptive backing resolution, with integer
+bounds defaulting to `[1, 1]`. Drawing and pointer mapping stay in logical game
+pixels. `screen.density` is the current backing pixels per logical pixel, and
+`screen.context` starts with that transform after a resize or context recovery.
 
 `applyGrade(context, w, h, grade?)`: the time of day's tint over what is drawn.
 
@@ -141,11 +158,54 @@ An item is `{x, y}` plus one of: `{thing, heading}`, `{tree: 'oak0', bend}`,
 
 `startLoop({update(dt), draw(info), tick = 1/120, maxElapsed = 0.25, autoStart = true})` → loop
 
-`info`: `{fps, steps (this frame), time (game seconds), frame}`.
+`info`: `{fps, steps, time, frame, alpha}`. `time` counts simulation seconds and
+`alpha` is the fraction of the next step, for interpolating render positions.
 Loop: `start()`, `stop()`, `pause(on)`, `paused`, `running`, `step(seconds)`, `clock`.
 
 `Clock.create(tick, maxElapsed)`, `Clock.advance(clock, nowMs, update)` → steps run,
-`Clock.reset(clock)`.
+`Clock.reset(clock)`. For a clock nested in another simulation, call
+`Clock.advanceBy(clock, elapsedSeconds, update)` to consume supplied time in
+fixed steps. Multiply elapsed time by your chosen simulation rate.
+`Clock.alpha(clock)` returns the fraction of a tick already accumulated.
+
+---
+
+## Sky and Waves (`sky.js`, `waves.js`)
+
+- `Sky.wrapDay(minute)` wraps a minute into the interval from 0 inclusive to 1440 exclusive.
+- `Sky.position(minute, {latitude, declination, transit = 720})` gives
+  `{x, y, z, elevation, azimuth}`. The unit vector points east, south, and up.
+  Latitude, declination, and returned angles use degrees. Azimuth is clockwise
+  from north. Time and transit use local minutes.
+- `Waves.coordinates(x, y, from, origin?)` converts a world point to
+  `{along, across}` in wave space. `from` is wind-from in world radians.
+  Pass `{x, y, along, across}` to preserve phase while moving the origin.
+- `Waves.create({frequency = .76, phaseSpeed = 3, bend?})` returns a wave field.
+  `sample(along, across, seconds, amplitude)` returns height and two tilt cues.
+  Use `crestSpacing`, `crestOffset(seconds)`, and `bend(across, seconds)`
+  to draw the same swell crests. `frequency` is radians per world unit and
+  `phaseSpeed` radians per second.
+
+---
+
+## Reflections (`reflections.js`)
+
+`createReflections(width, height, {tint}?)` creates a layer in logical screen
+pixels. Pass `tint: null` for untinted reflections. Recreate the layer on canvas
+recovery or when its logical dimensions change.
+
+1. Call `clear()` at the start of a frame. Paint opaque water (or other
+   reflective area) into `mask`, a 2D context. Its alpha controls where effects are visible.
+2. Call `mirror(view, item, sprite, options?)` for each reflected sprite.
+   Pass a `Camera.view()`, a world anchor `item: {x, y, anchorY?}`, and a
+   baked handle. Options are `time` (seconds), `roughness` (0–1), `scaleX`
+   and `scaleY` (world units per sprite pixel), and `opacity` (0–1).
+   For a sprite baked with `Voxel.tumble(..., {mirrored: true})`, set
+   `projected: true` to use its existing reflected projection.
+3. Call `draw(context)` once to tint, mask and draw the reflected sprites.
+   `drawEffect(context, paint, occlude?)` paints another effect through
+   the same mask. An optional occlusion callback erases parts of that effect
+   using the alpha it paints.
 
 ---
 
@@ -211,6 +271,17 @@ Glowing kinds (`flame`) draw only with `glow = true`: draw them after `applyGrad
 `copy(...)`, `getImageData`, `putImageData`, `createImageData`, `tiles`.
 `Ground.paint(ground, (x, y) => [r, g, b])`, `Ground.drawOn(ground, context => {...})`
 (draw with world coordinates across tiles).
+
+
+`Ground.createRelief({waterLevel, highestPoint, sliceHeight = .75, rise = .72,
+shoreBlend = 5})` returns `sliceHeight`, `layerSpacing`, `maxLift` and
+`lift(elevation, waterDistance)`. Distance is negative on dry land.
+`shoreBlend` controls how far from the water the terrain reaches full lift.
+
+`Ground.writeReliefColumn(image, column, top, foot, rgb, strata, mask?)` paints a
+projected column in ImageData between integer pixel rows. `strata` is the
+seam interval in pixels. If supplied, `mask` is a one-byte-per-pixel array
+whose covered pixels are cleared where the terrain occludes the reflective plane.
 
 ---
 

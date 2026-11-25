@@ -1,6 +1,6 @@
 {
   "name": "slice-engine",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A small engine for sprite-stacked (slice) pixel-art games in the browser: no build step, no dependencies.",
   "license": "MIT",
   "type": "module",
@@ -16,5 +16,19 @@
   "engines": {
     "node": ">=18"
   },
-  "private": true
+  "private": true,
+  "files": [
+    "src/",
+    "tools/",
+    "docs/",
+    "examples/index.html",
+    "examples/shared/",
+    "examples/01-hello-stack/",
+    "examples/02-model-viewer/",
+    "examples/03-crystal-rover/",
+    "examples/04-tutorial/",
+    "tests/",
+    "CLAUDE.md",
+    "CHANGELOG.md"
+  ]
 }

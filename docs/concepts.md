@@ -23,7 +23,7 @@ per heading and colour.
 ```
 
 - **World**: `x` to the east, `y` to the south (down the screen), `z` up.
-  One unit is one screen pixel on the ground. The view is a top-down
+  At native zoom, one unit is one logical screen pixel on the ground. The view is a top-down
   three-quarter view: the slices are squashed to 0.75 (`Voxel.SQUASH`) along
   the ground and stacked one pixel up per slice.
 - A thing at `(x, y, z)` is drawn at screen `(x - viewX, y - viewY - z)`.
@@ -43,7 +43,8 @@ Things standing on the ground are drawn from the back of the screen to the front
 by `y` (or `sortY` if you set it). `Scene.draw` does this, after drawing every
 flat thing (layer `'ground'`) and every shadow, so shadows never fall on top of
 the thing in front. For a bridge or a tall thing you walk behind, set `sortY` by
-hand.
+hand. A `Camera.view()` gives the scene a fractional origin and zoom. Keep
+collision and movement in world units as that view changes.
 
 ## Materials and palettes
 
@@ -56,6 +57,8 @@ hand.
 | `glass` | Never lit brighter than the base colour. |
 | `glow` | Ignores light: lamps, crystals, screens. |
 | `ink` | Dark trim that keeps its darkness. |
+
+A material can set `lightContrast` to reduce shading and tint on painted details.
 
 The *palette* is just `rgb` by material id. Recolouring keeps the model and its
 surfaces and only bakes new sprites: `thing.recolored({1: [96, 140, 186]}, 'blue')`.
@@ -71,7 +74,9 @@ they are, the colours shadows and highlights drift to, the contrast, and a
 is drawn (sprites already carry the light in their colours; the grade brings the
 painted ground and particles along). `Voxel.setLighting(id)` drops every baked
 picture; they bake again as they are next drawn. `Voxel.addPreset(id, {...})`
-adds your own (missing fields come from `day`).
+adds your own (missing fields come from `day`). A moving light can use
+`Sky.position()` and update the baked preset at a coarser interval than its
+screen tint.
 
 ## Memory: why things are baked, and when
 
@@ -104,6 +109,9 @@ default) as many times as real time needs, and `draw()` once per screen frame.
   plays the same at 30, 60 or 144 Hz, and a run can be replayed exactly from its
   inputs.
 - **draw** shows the state as the last step left it: scene, particles, interface.
+  Use `draw({alpha})` to interpolate between the previous and current
+  simulation positions. A nested `Clock.advanceBy()` can run parts of a
+  simulation at a different rate while keeping every update the same size.
   Read menu actions here (`Input.update()` then `Input.takeActions()`), because
   menus react once per press, not once per step.
 - `loop.step(seconds)` runs steps without a browser frame: tests and console
@@ -130,5 +138,7 @@ Browsers only start sound after a key or tap: pass
 `createScreen({width, height})` makes one canvas at the game's resolution (pick
 something like 320 × 180, 400 × 225 or 640 × 360) and shows it as big as fits,
 in whole device pixels where that wastes little room, so pixels stay square and
-sharp. Draw everything into `screen.context` at 1:1. `screen.toGame(clientX,
-clientY)` converts pointer positions.
+sharp. Draw into `screen.context` in logical game pixels. `screen.toGame(clientX,
+clientY)` converts pointer positions to those same units. Use `pixelDensity`
+to give the canvas a higher-resolution backing while keeping the same view size
+and input coordinates.

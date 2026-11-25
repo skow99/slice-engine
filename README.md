@@ -1,4 +1,4 @@
-# Slice Engine
+# Slice Engine 1.1
 
 A small engine for **sprite-stacked pixel-art games** in the browser, taken out of
 the Slice Drive racing game and made general.
@@ -13,16 +13,16 @@ particles, a pixel font, menus, collisions, saves and procedural trees.
 - **No build step, no dependencies.** Plain ES modules. Open a page and it runs.
 - **No asset files needed.** Models can be built in code or ASCII; sound is
   synthesised; the font is in code. PNG slice sheets work too when you have art.
-- **Fast on weak machines.** Nothing is rotated or scaled at draw time: every
-  picture is baked once and drawn with one `drawImage`. Baked pictures live
-  under a memory budget and are rebuilt if the browser drops the canvases.
+- **Baked sprites.** Heading and lighting are baked into cached pictures. A
+  scene can draw at native pixel scale or magnify those pictures with a
+  fractional camera. Cached pictures are rebuilt after canvas loss.
 
 ![What it looks like: examples/03-crystal-rover](docs/crystal-rover.png)
 
 ## Quick start
 
 ```bash
-node tools/serve.js 8090
+npm run serve
 ```
 
 Then open http://localhost:8090/examples/. (ES modules need `http://`;
@@ -66,6 +66,7 @@ startLoop({
 
 ## Documentation
 
+- [Changelog](CHANGELOG.md)
 - [docs/tutorial.md](docs/tutorial.md): build a game from an empty page, in eight steps.
 - [docs/concepts.md](docs/concepts.md): how it works. Coordinates, headings, slices, materials, lighting, memory, the loop.
 - [docs/api.md](docs/api.md): every module and function.
@@ -76,18 +77,21 @@ startLoop({
 
 | Module | Import as | What it does |
 | --- | --- | --- |
-| `voxel.js` | `Voxel` | The slice renderer: models, baked sprites and shadows for 64 headings, lighting presets, the memory budget, lost-canvas recovery. |
+| `voxel.js` | `Voxel` | The slice renderer: baked sprites, pivoted and mirrored poses, pose attachments, lighting presets, signed shadows, and the memory budget. |
 | `model.js` | `Model` | Making models: `builder` (boxes, blobs, cylinders, wheels, mirroring), `fromLayers` (ASCII), `fromSliceImage` (PNG sheets), `pack`/`unpack` (JSON), and `thing()`, a model drawn at a world heading. Seeded `random` and `hash`. |
-| `scene.js` | `Scene` | One frame's objects drawn in order: flat things, shadows, standing things back to front, overlays. Culls what is off screen. |
-| `camera.js` | `Camera` | Follow camera with look-ahead, world bounds and shake. |
-| `screen.js` | `Screen` | The game canvas at its own resolution, scaled to whole device pixels; the time-of-day tint (`applyGrade`); lost-canvas events. |
+| `scene.js` | `Scene` | Depth-sorted drawing and culling, with optional zoom and fractional positioning. |
+| `camera.js` | `Camera` | Bounded follow camera and interpolated zoom views with coordinate conversion. |
+| `screen.js` | `Screen` | Pixel-art display with optional high-DPI backing, pointer mapping, colour grading, and canvas recovery. |
 | `loop.js` | `Loop` | `requestAnimationFrame` loop with fixed simulation steps; pause; `step()` for tests. |
-| `clock.js` | `Clock` | The fixed-step clock the loop uses. |
+| `clock.js` | `Clock` | Fixed steps from wall time or supplied simulation time, with interpolation progress. |
 | `input.js` | `Input` | Keyboard, touch buttons and gamepad merged into named actions: `held`, `pressed`, `axis`, `stick`, an action queue for menus. |
 | `audio.js` | `Sfx` | Web Audio synth: effects by name, your own effects, a step-sequencer for music, volumes, pause. |
 | `particles.js` | `Particles` | Pooled pixel particles: smoke, dust, sparks, flames, spray, confetti and your own kinds. |
 | `gfx.js` | `Gfx` | Pixel fonts in code, text, panels, time formatting. |
-| `ground.js` | `Ground` | Big painted grounds kept as 512 px tiles; `paint` with a function per pixel. |
+| `ground.js` | `Ground` | Tiled ground painting and height-map slice projection. |
+| `sky.js` | `Sky` | Celestial position from latitude, declination and local time. |
+| `waves.js` | `Waves` | Shared travelling wave field for rendered crests and simulated motion. |
+| `reflections.js` | `Reflections` | Masked reflections, ripples, and other effects clipped to a surface. |
 | `trees.js` | `Trees` | Eight species of procedural trees in four seasons, three sizes each, with wind bends. |
 | `collide.js` | `Collide` | Circles and boxes, pushing apart with bounce and mass, a spatial grid. |
 | `storage.js` | `Storage` | Versioned saves in `localStorage` that never throw. |
@@ -95,13 +99,14 @@ startLoop({
 
 `src/index.js` exports each as a namespace (`Voxel`, `Model`, ...) plus the
 factories (`createScreen`, `createScene`, `createCamera`, `startLoop`,
-`createStore`, `createMenu`, `createGrid`) and the model helpers.
+`createStore`, `createMenu`, `createGrid`, `createReflections`) and the model helpers.
 
 ## Tools
 
 - `node tools/serve.js [port]`: a static server for the examples and your game.
-- `node tools/model-to-sheet.js <module.js> <export> <out.png>`: export a model
+- `node tools/model-to-sheet.js <module.js> <export> <out.png> [columns] [gap]`: export a model
   built in code as a PNG slice sheet, for an artist to paint over.
+- `node tools/fit-sheet.js <template.png> <paint.png> <out.png>`: fit painted shading to an exported voxel grid.
 - `tools/png.js`: a tiny PNG reader and writer for your own Node tools.
 
 ## Tests
@@ -126,8 +131,8 @@ input and trees. Use `tests/fake-canvas.js` the same way in your own game's test
 
 ## Limits worth knowing
 
-- The camera does not zoom: the world is drawn 1:1. Slice Drive zooms by drawing
-  into a larger buffer that the browser scales; that is left to the game.
+- `createCamera()` uses whole-pixel positioning. Use `Camera.view()` for a
+  fractional zoom and choose model resolutions to suit your zoom range.
 - `applyGrade` tints everything drawn before it, glowing things included. For
   lamps that stay bright at dusk, draw them after the grade (Slice Drive keeps
   them on a separate layer).

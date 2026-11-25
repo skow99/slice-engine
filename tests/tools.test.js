@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {encodePNG, decodePNG} from '../tools/png.js';
+import {fitSheet} from '../tools/fit-sheet.js';
 import {Model} from '../src/index.js';
 
 test('PNG encode and decode round trip', () => {
@@ -22,4 +23,18 @@ test('the example barrel sheet loads as the barrel built in code', async () => {
     assert.equal(!a, !b, 'same shape');
     if (a) assert.deepEqual(fromSheet.materials[a].rgb, fromCode.materials[b].rgb, 'same colours');
   }
+});
+
+
+test('fitting painted art retains the template geometry and fills missing paint', () => {
+  const template = {width: 3, height: 1, data: Uint8ClampedArray.of(
+    100, 80, 60, 255, 100, 80, 60, 0, 100, 80, 60, 255,
+  )};
+  const paint = {width: 6, height: 1, data: Uint8ClampedArray.of(
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0,
+  )};
+  const fitted = fitSheet(template, paint);
+  assert.equal(fitted.width, 3);
+  assert.deepEqual([...fitted.data], [124, 104, 84, 255, 0, 0, 0, 0, 100, 80, 60, 255]);
 });

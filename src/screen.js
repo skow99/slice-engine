@@ -1,6 +1,7 @@
 /* The screen: one canvas at the game's own resolution (320 × 180 by default),
  * shown as large as fits, in whole device pixels when that costs little room,
- * so every game pixel is a crisp square. Everything is drawn 1:1 into it.
+ * so each game pixel is a crisp square. An optional backing density increases
+ * resolution while drawing continues in logical game pixels.
  *
  *   const screen = createScreen({width: 320, height: 180, parent: document.body});
  *   screen.context.drawImage(...)
@@ -13,9 +14,13 @@
 import * as Voxel from './voxel.js';
 
 export function createScreen({width = 320, height = 180, parent = document.body, background = '#0c1013',
-  wholePixels = 0.84, onRestore = null, onLost = null} = {}) {
+  wholePixels = 0.84, pixelDensity = [1, 1], onRestore = null, onLost = null} = {}) {
+  const [minDensity, maxDensity] = pixelDensity;
+  if (!Number.isInteger(minDensity) || !Number.isInteger(maxDensity) || minDensity < 1 || maxDensity < minDensity) {
+    throw new RangeError('pixelDensity must contain positive integers in ascending order');
+  }
   const canvas = document.createElement('canvas');
-  canvas.width = width; canvas.height = height;
+  canvas.width = width * minDensity; canvas.height = height * minDensity;
   canvas.style.imageRendering = 'pixelated';
   canvas.style.display = 'block';
   canvas.style.touchAction = 'none';
@@ -25,19 +30,30 @@ export function createScreen({width = 320, height = 180, parent = document.body,
   box.appendChild(canvas);
   parent.appendChild(box);
   const context = canvas.getContext('2d');
-  context.imageSmoothingEnabled = false;
-  const screen = {canvas, context, width, height, scale: 1, box,
+  function configureContext() {
+    context.imageSmoothingEnabled = false;
+    if (screen.density !== 1) context.setTransform(screen.density, 0, 0, screen.density, 0, 0);
+  }
+  const screen = {canvas, context, width, height, scale: 1, density: minDensity, box,
     /* Size the canvas on the page: called on resize, call it yourself if the parent changes. */
     fit() {
       const ratio = window.devicePixelRatio || 1;
       const cssW = box.clientWidth || window.innerWidth, cssH = box.clientHeight || window.innerHeight;
-      const exact = Math.min(cssW * ratio / width, cssH * ratio / height);
+      const baseWidth = width * minDensity;
+      const exact = Math.min(cssW * ratio / baseWidth, cssH * ratio / (height * minDensity));
       const whole = Math.max(1, Math.floor(exact));
       // Whole device pixels per game pixel unless that would waste over (1 - wholePixels) of the room.
-      const deviceW = exact < 1 || whole / exact < wholePixels ? Math.floor(width * exact) : width * whole;
-      const deviceH = Math.round(deviceW * height / width);
+      const deviceW = exact < 1 || whole / exact < wholePixels ? Math.max(1, Math.floor(baseWidth * exact)) : baseWidth * whole;
+      const deviceH = Math.max(1, Math.round(deviceW * height / width));
       canvas.style.width = deviceW / ratio + 'px'; canvas.style.height = deviceH / ratio + 'px';
       screen.scale = deviceW / width;
+      const density = Math.max(minDensity, Math.min(maxDensity, Math.ceil(screen.scale)));
+      if (density !== screen.density) {
+        screen.density = density;
+        canvas.width = width * density;
+        canvas.height = height * density;
+        configureContext();
+      }
     },
     /* A pointer position (clientX, clientY) in game pixels. */
     toGame(clientX, clientY) {
@@ -45,15 +61,28 @@ export function createScreen({width = 320, height = 180, parent = document.body,
       return {x: (clientX - rect.left) * width / rect.width, y: (clientY - rect.top) * height / rect.height};
     },
     clear(color = background) { context.fillStyle = color; context.fillRect(0, 0, width, height); },
+    destroy() {
+      observer?.disconnect();
+      window.removeEventListener('resize', fit);
+      canvas.removeEventListener('contextlost', lost);
+      canvas.removeEventListener('contextrestored', restored);
+      box.remove();
+    },
   };
-  screen.fit();
-  window.addEventListener('resize', () => screen.fit());
-  canvas.addEventListener('contextlost', () => { if (onLost) onLost(); });
-  canvas.addEventListener('contextrestored', () => {
-    context.imageSmoothingEnabled = false;
+  const fit = () => screen.fit();
+  const lost = () => { if (onLost) onLost(); };
+  const restored = () => {
+    configureContext();
     Voxel.rastersLost();
     if (onRestore) onRestore();
-  });
+  };
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null;
+  configureContext();
+  fit();
+  observer?.observe(box);
+  window.addEventListener('resize', fit);
+  canvas.addEventListener('contextlost', lost);
+  canvas.addEventListener('contextrestored', restored);
   return screen;
 }
 

@@ -1,6 +1,18 @@
 /* A minimal PNG writer and reader for tools (Node only, no dependencies):
  * 8-bit RGBA, no interlacing. Enough for slice sheets. */
-import {deflateSync, inflateSync, crc32} from 'node:zlib';
+import * as zlib from 'node:zlib';
+const {deflateSync, inflateSync} = zlib;
+
+// Node 18 has no native zlib.crc32.
+function crc32(bytes) {
+  if (zlib.crc32) return zlib.crc32(bytes);
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
 
 function chunk(type, data) {
   const out = Buffer.alloc(12 + data.length);

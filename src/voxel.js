@@ -4,8 +4,8 @@
  * ids. For each of 64 headings the stack is ray-sampled once into a "surface":
  * which voxel is visible at every screen pixel and how brightly it is lit.
  * Surfaces are colour-independent, so every colour scheme (palette) of a
- * model shares them and a sprite is just a palette lookup. Nothing is rotated
- * or scaled at draw time: a sprite is a small canvas drawn with drawImage.
+ * model shares them and a sprite is just a palette lookup. Heading is baked
+ * into the sprite, which is a small canvas drawn with drawImage.
  *
  * Model space: x across, y along (front faces +y), z up. One voxel = one pixel.
  * Pass headings in "turns": turn 0 shows the front facing down the screen.
@@ -529,26 +529,39 @@ function outerVoxels(model) {
   model.outer = Int16Array.from(list);
   return model.outer;
 }
-function tumbleSurface(model, direction, pitchStep, rollStep, steps = 16) {
-  const key = 'tumble|' + direction + '|' + pitchStep + '|' + rollStep + '|' + steps;
-  const cached = model.surfaces.get(key);
-  if (cached) { touch('surfaces', model, key); return cached; }
-  const {w, h, count, cx, cy} = model, outer = outerVoxels(model);
-  const zc = count / 2, R = Math.ceil(Math.hypot(w, h, count) / 2) + 1;
-  const width = R * 2 + 4, originX = R + 2;
-  const originY = Math.ceil(R * SQUASH + zc + R) + 2, height = originY + Math.ceil(R * SQUASH + R - zc) + 3;
-  const vis = new Int32Array(width * height).fill(-1), shade = new Uint8Array(width * height);
-  const depth = new Float32Array(width * height).fill(-Infinity);
+function tumbleAxes(direction, pitchStep, rollStep, steps, frames) {
   const pitch = pitchStep * Math.PI * 2 / steps, roll = rollStep * Math.PI * 2 / steps;
   const cp = Math.cos(pitch), sp = Math.sin(pitch), cr = Math.cos(roll), sr = Math.sin(roll);
-  const angle = direction * Math.PI * 2 / TURN_FRAMES, ca = Math.cos(angle), sa = Math.sin(angle);
+  const angle = direction * Math.PI * 2 / frames, ca = Math.cos(angle), sa = Math.sin(angle);
   // Model axes after roll and pitch, then turned to the heading (screen x, ground y, up z).
   const turnTo = (x, y, z) => {
     const x1 = x * cr + z * sr, z1 = -x * sr + z * cr;
     const y2 = y * cp + z1 * sp, z2 = -y * sp + z1 * cp;
     return [x1 * ca - y2 * sa, x1 * sa + y2 * ca, z2];
   };
-  const [axx, axy, axz] = turnTo(1, 0, 0), [ayx, ayy, ayz] = turnTo(0, 1, 0), [azx, azy, azz] = turnTo(0, 0, 1);
+  return [turnTo(1, 0, 0), turnTo(0, 1, 0), turnTo(0, 0, 1)];
+}
+
+/* Rotate an offset from the same pivot used to bake a tumbled model. */
+function poseTransform(direction, pitchStep, rollStep, steps = 16, frames = TURN_FRAMES) {
+  const [[axx, axy, axz], [ayx, ayy, ayz], [azx, azy, azz]] = tumbleAxes(direction, pitchStep, rollStep, steps, frames);
+  return (x, y, z) => ({
+    x: x * axx + y * ayx + z * azx,
+    y: x * axy + y * ayy + z * azy,
+    z: x * axz + y * ayz + z * azz,
+  });
+}
+function tumbleSurface(model, direction, pitchStep, rollStep, steps = 16, {pivotZ = model.count / 2, mirrored = false, frames = TURN_FRAMES} = {}) {
+  const key = 'tumble|' + direction + '|' + pitchStep + '|' + rollStep + '|' + steps + '|' + pivotZ + '|' + mirrored + '|' + frames;
+  const cached = model.surfaces.get(key);
+  if (cached) { touch('surfaces', model, key); return cached; }
+  const {w, h, count, cx, cy} = model, outer = outerVoxels(model);
+  const zc = pivotZ, R = Math.ceil(Math.hypot(w / 2, h / 2, Math.max(zc, count - zc))) + 1;
+  const width = R * 2 + 4, originX = R + 2;
+  const originY = Math.ceil(R * SQUASH + zc + R) + 2, height = originY + Math.ceil(R * SQUASH + R - zc) + 3;
+  const vis = new Int32Array(width * height).fill(-1), shade = new Uint8Array(width * height);
+  const depth = new Float32Array(width * height).fill(-Infinity);
+  const [[axx, axy, axz], [ayx, ayy, ayz], [azx, azy, azz]] = tumbleAxes(direction, pitchStep, rollStep, steps, frames);
   const offsets = [0.17, 0.5, 0.83];
   for (let k = 0; k < outer.length; k += 3) {
     const x = outer[k], y = outer[k + 1], z = outer[k + 2], index = (z * h + y) * w + x;
@@ -564,7 +577,12 @@ function tumbleSurface(model, direction, pitchStep, rollStep, steps = 16) {
     level = Math.min(LEVELS - 1, level);
     for (const ox of offsets) for (const oy of offsets) for (const oz of offsets) {
       const mx = x + ox - cx, my = y + oy - cy, mz = z + oz - zc;
-      const X = mx * axx + my * ayx + mz * azx, Y = mx * axy + my * ayy + mz * azy, Z = mx * axz + my * ayz + mz * azz + zc;
+      const X = mx * axx + my * ayx + mz * azx, Y = mx * axy + my * ayy + mz * azy;
+      let Z = mx * axz + my * ayz + mz * azz + zc;
+      if (mirrored) {
+        if (Z < zc) continue;
+        Z = 2 * zc - Z;
+      }
       const px = Math.floor(X + originX), py = Math.floor(Y * SQUASH - Z + originY);
       if (px < 1 || py < 1 || px >= width - 1 || py >= height - 1) continue;
       const out = py * width + px, near = Y + SQUASH * Z;
@@ -576,10 +594,11 @@ function tumbleSurface(model, direction, pitchStep, rollStep, steps = 16) {
   remember('surfaces', model, key, result);
   return result;
 }
-function tumble(model, variant, palette, direction, pitchStep, rollStep, steps = 16) {
-  const key = variant + '|tumble|' + direction + '|' + pitchStep + '|' + rollStep + '|' + steps;
+function tumble(model, variant, palette, direction, pitchStep, rollStep, steps = 16, options = {}) {
+  const {pivotZ = model.count / 2, mirrored = false, frames = TURN_FRAMES} = options;
+  const key = variant + '|tumble|' + direction + '|' + pitchStep + '|' + rollStep + '|' + steps + '|' + pivotZ + '|' + mirrored + '|' + frames;
   if (model.sprites.has(key)) { touch('sprites', model, key); return model.sprites.get(key); }
-  const result = bake(model, tumbleSurface(model, direction, pitchStep, rollStep, steps), palette);
+  const result = bake(model, tumbleSurface(model, direction, pitchStep, rollStep, steps, options), palette);
   remember('sprites', model, key, result);
   return result;
 }
@@ -593,6 +612,7 @@ function rampsFor(palette, materials) {
   ramps = palette.map((rgb, id) => {
     if (!rgb) return null;
     const kind = materials[id] ? materials[id].kind : 'matte';
+    const lightContrast = materials[id]?.lightContrast ?? 1;
     const out = new Uint8Array(LEVELS * 3);
     for (let level = 0; level < LEVELS; level++) {
       const L = lighting;
@@ -601,6 +621,9 @@ function rampsFor(palette, materials) {
       if (kind === 'glow') { gain = level >= 4 ? 1.08 : 1; cool = warm = 0; }
       else if (kind === 'ink') { gain = Math.min(1, 0.76 + level * 0.08); warm = 0; }
       else if (kind === 'glass') { gain = 1 + ([0.74, 0.84, 0.93, 1, 1, 1][level] - 1) * L.contrast; warm = 0; }
+      gain = 1 + (gain - 1) * lightContrast;
+      cool *= lightContrast;
+      warm *= lightContrast;
       for (let c = 0; c < 3; c++) {
         let value = rgb[c] * gain;
         value += (L.cool[c] - value) * cool;
@@ -746,7 +769,9 @@ function shadow(model, direction, frames = TURN_FRAMES) {
   if (cached !== undefined) return cached;
   const {w, h, count, vox, cx, cy, edge} = model;
   const radius = Math.ceil(Math.hypot(w, h) / 2) + 2;
-  const reachX = Math.ceil(count * SHADOW_X), reachY = Math.ceil(count * SHADOW_Y);
+  const reachX = Math.ceil(count * Math.abs(SHADOW_X)), reachY = Math.ceil(count * Math.abs(SHADOW_Y));
+  const originX = radius + (SHADOW_X < 0 ? reachX : 0);
+  const originY = radius + (SHADOW_Y < 0 ? reachY : 0);
   const width = radius * 2 + reachX, height = radius * 2 + reachY;
   const angle = direction * Math.PI * 2 / frames, cosine = Math.cos(angle), sine = Math.sin(angle);
   const alpha = new Uint8Array(width * height);
@@ -757,7 +782,7 @@ function shadow(model, direction, frames = TURN_FRAMES) {
     for (let py = 0; py < height; py++) for (let px = 0; px < width; px++) {
       const at = py * width + px;
       if (alpha[at] >= strength) continue;
-      const screenX = px + 0.5 + edge - radius - offsetX, localY = (py + 0.5 + edge - radius - offsetY) / SQUASH;
+      const screenX = px + 0.5 + edge - originX - offsetX, localY = (py + 0.5 + edge - originY - offsetY) / SQUASH;
       const x = Math.floor(screenX * cosine + localY * sine + cx);
       const y = Math.floor(-screenX * sine + localY * cosine + cy);
       if (x >= 0 && x < w && y >= 0 && y < h && vox[(z * h + y) * w + x]) alpha[at] = strength;
@@ -780,7 +805,7 @@ function shadow(model, direction, frames = TURN_FRAMES) {
       image.data[out] = rgb[0]; image.data[out + 1] = rgb[1]; image.data[out + 2] = rgb[2]; image.data[out + 3] = value;
     }
     context.putImageData(image, 0, 0);
-    result = {canvas, dx: left - radius, dy: top - radius, w: sw, h: sh};
+    result = {canvas, dx: left - originX, dy: top - originY, w: sw, h: sh};
   }
   model.shadows.set(key, result);
   return result;
@@ -794,7 +819,7 @@ function draw(context, handle, x, y) {
 export {
   TURN_FRAMES, SQUASH, LEVELS, PRESETS, PRESET_IDS, TEXTURE_LIGHT,
   setCanvasFactory, setBudget, stats, createModel, dropModel, directionOf, solid, surface, bake, sprite, spriteByKey, spriteKey,
-  hasSprite, shadow, hasShadow, draw, setLighting, addPreset, tumble, tumbleSurface,
+  hasSprite, shadow, hasShadow, draw, setLighting, addPreset, tumble, tumbleSurface, poseTransform,
   attachTexture, textureColor, viewWeights,
   onRastersLost, rastersLost, liveCanvases,
   newCanvas as canvas,

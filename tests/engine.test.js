@@ -2,7 +2,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {fakeCanvas, useFakeCanvas} from './fake-canvas.js';
-import {Voxel, Model, Clock, Particles, Collide, Storage, Gfx, Ground, Trees, Input, createScene, createCamera, createMenu} from '../src/index.js';
+import {Voxel, Model, Camera, Clock, Sky, Waves, Particles, Collide, Storage, Gfx, Ground, Trees, Input, createScene, createCamera, createMenu} from '../src/index.js';
 
 useFakeCanvas(Voxel);
 
@@ -23,6 +23,23 @@ function where(handle, test) {
   return n ? {x: sx / n, y: sy / n, n} : null;
 }
 const yellow = (r, g, b) => r > 200 && g > 150 && b < 120;
+
+test('a mirrored pose keeps the bow direction and flips height at the waterline', () => {
+  const boat = Model.builder(5, 17, 11, [
+    {rgb: [255, 220, 40], kind: 'glow'}, {rgb: [230, 30, 30], kind: 'glow'},
+  ]);
+  boat.box(1, 14, 1, 3, 16, 2, 1);
+  boat.box(1, 7, 8, 3, 9, 10, 2);
+  const thing = Model.thing(boat);
+  const red = (r, g) => r > 180 && g < 70;
+  for (const heading of [Math.PI / 2, -Math.PI / 2]) {
+    const direction = thing.direction(heading);
+    const upright = Voxel.tumble(thing.model, thing.variant, thing.palette, direction, 0, 0, 16, {pivotZ: 1});
+    const reflection = Voxel.tumble(thing.model, thing.variant, thing.palette, direction, 0, 0, 16, {pivotZ: 1, mirrored: true});
+    assert.equal(Math.sign(where(reflection, yellow).y), Math.sign(Math.sin(heading)));
+    assert.ok(where(upright, red).y < -5 && where(reflection, red).y > 5);
+  }
+});
 
 test('a model bakes a sprite and a shadow, cached', () => {
   const b = arrow(), t = Model.thing(b);
@@ -89,6 +106,47 @@ test('lighting presets: switching drops the baked pictures; custom presets work'
   assert.equal(Voxel.lighting.name, 'ALIEN');
   assert.ok(t.sprite(0));
   Voxel.setLighting('day');
+});
+
+test('material light contrast softens baked shading for both sprite renderers', () => {
+  const shades = (material, rolled) => {
+    const block = Model.builder(8, 8, 8, [material]);
+    block.box(0, 0, 0, 7, 7, 7, 1);
+    const thing = Model.thing(block);
+    const sprite = rolled ? Voxel.tumble(thing.model, thing.variant, thing.palette, 0, 0, 1) : thing.sprite();
+    const colors = new Set();
+    const pixels = sprite.canvas.pixels;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i + 3] && pixels[i] > 105) colors.add(pixels[i]);
+    }
+    return colors;
+  };
+  for (const rolled of [false, true]) {
+    const material = {rgb: [215, 200, 180]};
+    assert.ok(shades(material, rolled).size > 1);
+    assert.deepEqual(shades({...material, lightContrast: 0}, rolled), new Set([215]));
+  }
+});
+
+test('model and tree shadows extend in both signed directions when a light moves', () => {
+  const column = Model.builder(3, 3, 12, [[180, 170, 150]]);
+  column.box(0, 0, 0, 2, 2, 11, 1);
+  const model = Model.thing(column);
+  try {
+    Voxel.addPreset('moving-light', {shadow: [1.5, 1.4]});
+    Voxel.setLighting('moving-light');
+    const east = [model.shadow(), Trees.shadow('birch2')];
+    Voxel.addPreset('moving-light', {shadow: [-1.5, -1.4]});
+    const west = [model.shadow(), Trees.shadow('birch2')];
+    for (let i = 0; i < east.length; i++) {
+      assert.ok(west[i].dx < east[i].dx - 12);
+      assert.ok(west[i].dy < east[i].dy - 12);
+      assert.ok(Math.abs(west[i].w - east[i].w) < 4);
+      assert.ok(Math.abs(west[i].h - east[i].h) < 8);
+    }
+  } finally {
+    Voxel.setLighting('day');
+  }
 });
 
 test('the picture budget evicts least recently used sprites', () => {
@@ -234,4 +292,69 @@ test('trees grow and bake', () => {
   Trees.setSeason('winter');
   assert.equal(Trees.getSeason(), 'winter');
   Trees.setSeason('summer');
+});
+
+
+test('a padded slice sheet round-trips its geometry and accepts lighting settings by colour', () => {
+  const original = arrow();
+  const {rgba, width, height, sliceWidth, sliceHeight, columns, count} =
+    Model.toSlicePixels(original.model, {columns: 3, gap: 2});
+  const options = {sliceWidth, sliceHeight, columns, count, gap: 2, kinds: {'#ffdc28': {kind: 'glow', lightContrast: 0}}};
+  const result = Model.fromSlicePixels(rgba, width, height, options);
+  assert.deepEqual(Model.toSlicePixels(result.model, {columns, gap: 2}).rgba, rgba);
+  assert.equal(result.model.materials.find(material => material?.kind === 'glow').lightContrast, 0);
+  assert.throws(() => Model.fromSlicePixels(rgba, width, height, {...options, count: 7}), /fit/);
+});
+
+test('a zoomed scene keeps fractional positions, culls in world units and preserves layer order', () => {
+  const camera = Camera.view({x: 40.5, y: 30.5}, {width: 120, height: 80}, 2, {x: 40, y: 30}, .5);
+  assert.deepEqual(camera.toScreen(camera.position), {x: 60, y: 40});
+  assert.deepEqual(camera.toWorld({x: 60, y: 40}), camera.position);
+  const context = fakeCanvas(120, 80).getContext('2d');
+  context.scale = (x, y) => context.calls.push(['scale', x, y]);
+  const sprite = {canvas: fakeCanvas(1, 1), dx: 0, dy: 0, w: 1, h: 1};
+  const scene = createScene();
+  scene.add({sprite, x: 40, y: 30});
+  scene.add({sprite, x: 71, y: 31});
+  scene.add({x: 40, y: 29, draw(ctx) { ctx.calls.push(['back']); }});
+  const stats = scene.draw(context, camera);
+  assert.deepEqual(context.calls, [['scale', 2, 2], ['back'], ['drawImage', sprite.canvas, 29.75, 19.75]]);
+  assert.equal(stats.culled, 1);
+});
+
+test('simulation elapsed time is consumed in equal steps and exposes interpolation', () => {
+  const clock = Clock.create(1 / 60);
+  const ticks = [];
+  const update = dt => ticks.push(dt);
+  assert.equal(Clock.advanceBy(clock, clock.tick / 2, update), 0);
+  assert.equal(Clock.alpha(clock), .5);
+  assert.equal(Clock.advanceBy(clock, clock.tick * 4, update), 4);
+  assert.deepEqual(ticks, Array(4).fill(clock.tick));
+  assert.ok(Math.abs(Clock.alpha(clock) - .5) < 1e-8);
+  Clock.reset(clock);
+  assert.equal(Clock.alpha(clock), 0);
+});
+
+test('pose attachments use the same rotation as a baked model with a reduced heading count', () => {
+  const thing = Model.thing(arrow(), {frames: 4});
+  const direction = thing.direction(0);
+  const rotate = Voxel.poseTransform(direction, 0, 0, 16, thing.frames);
+  const front = rotate(0, 4, 0);
+  assert.equal(front.x, 4);
+  assert.ok(Math.abs(front.y) < 1e-8);
+  const posed = Voxel.tumble(thing.model, thing.variant, thing.palette, direction, 0, 0, 16, {frames: thing.frames});
+  assert.ok(where(posed, yellow).x > 2);
+  assert.notEqual(Voxel.tumble(thing.model, thing.variant, thing.palette, direction, 0, 0, 16), posed);
+});
+
+test('sky and wave coordinates are stable across day wrap and phase reanchoring', () => {
+  assert.equal(Sky.wrapDay(-1), 1439);
+  assert.equal(Sky.position(720, {latitude: 0, declination: 0}).elevation, 90);
+  assert.ok(Math.abs(Sky.position(360, {latitude: 0, declination: 0}).azimuth - 90) < 1e-8);
+  const origin = {x: 7, y: 4, ...Waves.coordinates(7, 4, 0)};
+  assert.deepEqual(Waves.coordinates(9, 13, 0, origin), Waves.coordinates(9, 13, 0));
+  const field = Waves.create({bend: () => 0});
+  const crest = field.crestOffset(3);
+  assert.ok(field.sample(crest, 0, 3, 1).height > 0.75);
+  assert.ok(field.sample(crest + field.crestSpacing / 2, 0, 3, 1).height < -0.75);
 });

@@ -15,7 +15,7 @@ import * as Clock from './clock.js';
 
 export function startLoop({update, draw, tick = 1 / 120, maxElapsed = 0.25, autoStart = true} = {}) {
   const clock = Clock.create(tick, maxElapsed);
-  const info = {fps: 0, steps: 0, time: 0, frame: 0};
+  const info = {fps: 0, steps: 0, time: 0, frame: 0, alpha: 0};
   let running = false, paused = false, frames = 0, since = 0, handle = null;
   function frame(now) {
     if (!running) return;
@@ -24,6 +24,7 @@ export function startLoop({update, draw, tick = 1 / 120, maxElapsed = 0.25, auto
     if (paused) clock.previous = now;
     frames++;
     if (now - since >= 1000) { info.fps = Math.round(frames * 1000 / (now - since)); frames = 0; since = now; }
+    info.alpha = Clock.alpha(clock);
     info.frame++;
     if (draw) draw(info);
   }

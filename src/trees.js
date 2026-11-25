@@ -269,8 +269,10 @@ function project(tree) {
 function castShadow(tree) {
   const {n, h, vox} = tree, area = n * n, cx = Math.floor(n / 2), cy = Math.floor(n / 2);
   const SX = Voxel.SHADOW_X, SY = Voxel.SHADOW_Y, L = Voxel.lighting;
-  const radius = cx + 2, reachX = Math.ceil(h * SX) + 2, reachY = Math.ceil(h * SY) + 2;
-  const width = radius * 2 + reachX, height = Math.ceil(radius * 2 * SQUASH) + reachY + 2, originY = Math.ceil(radius * SQUASH) + 1;
+  const radius = cx + 2, reachX = Math.ceil(h * Math.abs(SX)) + 2, reachY = Math.ceil(h * Math.abs(SY)) + 2;
+  const originX = radius + (SX < 0 ? reachX : 0);
+  const originY = Math.ceil(radius * SQUASH) + 1 + (SY < 0 ? reachY : 0);
+  const width = radius * 2 + reachX, height = Math.ceil(radius * 2 * SQUASH) + reachY + 2;
   const alpha = new Uint8Array(width * height);
   for (let z = 0; z < h; z++) {
     const strength = z < 3 ? L.shadowAlpha[0] : L.shadowAlpha[1], ox = Math.round(z * SX), oy = Math.round(z * SY);
@@ -279,7 +281,7 @@ function castShadow(tree) {
       if (py < 0 || py >= height) continue;
       for (let x = 0; x < n; x++) {
         if (!vox[base + x]) continue;
-        const at = py * width + x - cx + ox + radius;
+        const at = py * width + x - cx + ox + originX;
         if (alpha[at] < strength) alpha[at] = strength;
       }
     }
@@ -298,7 +300,7 @@ function castShadow(tree) {
     image.data[out] = r; image.data[out + 1] = g; image.data[out + 2] = b; image.data[out + 3] = value;
   }
   context.putImageData(image, 0, 0);
-  return {canvas, dx: left - radius, dy: top - originY, w: sw, h: sh};
+  return {canvas, dx: left - originX, dy: top - originY, w: sw, h: sh};
 }
 
 /* ---------- Kinds, caches and the season ---------- */
@@ -325,15 +327,15 @@ function entry(kind) {
   if (!e) {
     const k = kinds[kind], tree = grow(k.type, k.variant, season, k.S);
     const base = project(tree);
-    e = {base, levels: new Map(), shadow: castShadow(tree), light: Voxel.lightingId, tree: null};
+    e = {base, levels: new Map(), shadow: castShadow(tree), light: Voxel.lighting, tree: null};
     // The voxels are only kept until the light changes once; most sessions never need them again.
     e.tree = tree;
     bySeason.set(kind, e);
   }
-  if (e.light !== Voxel.lightingId) {
+  if (e.light !== Voxel.lighting) {
     // A new time of day: outlines and shadows bake again from the kept voxels.
     const k = kinds[kind], tree = e.tree || grow(k.type, k.variant, season, k.S);
-    e.base = project(tree); e.shadow = castShadow(tree); e.levels.clear(); e.light = Voxel.lightingId; e.tree = tree;
+    e.base = project(tree); e.shadow = castShadow(tree); e.levels.clear(); e.light = Voxel.lighting; e.tree = tree;
   }
   return e;
 }

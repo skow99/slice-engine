@@ -24,7 +24,7 @@ import * as Trees from './trees.js';
 /* Is a handle drawn at (x, y) on the view inside w × h? */
 function seen(handle, x, y, w, h) {
   if (!handle) return false;
-  const left = Math.round(x) + handle.dx, top = Math.round(y) + handle.dy;
+  const left = x + handle.dx, top = y + handle.dy;
   return left < w && top < h && left + handle.w > 0 && top + handle.h > 0;
 }
 
@@ -44,34 +44,50 @@ export function createScene() {
     if (item.tree) return Trees.shadow(item.tree);
     return item.shadow || null;
   }
-  function drawItem(context, item, viewX, viewY, w, h) {
+  function drawItem(context, item, viewX, viewY, w, h, zoomed) {
     const sx = item.x - viewX, sy = item.y - viewY - (item.z || 0);
     if (item.alpha !== undefined) context.globalAlpha = item.alpha;
     if (item.draw) { item.draw(context, sx, sy); stats.drawn++; }
     else {
       const handle = spriteOf(item);
-      if (seen(handle, sx, sy, w, h)) { Voxel.draw(context, handle, sx, sy); stats.drawn++; } else stats.culled++;
+      if (drawHandle(context, handle, sx, sy, w, h, zoomed)) stats.drawn++;
+      else stats.culled++;
     }
     if (item.alpha !== undefined) context.globalAlpha = 1;
   }
-  /* view: {viewX, viewY, viewW, viewH} (a camera from camera.js will do). */
+  function drawHandle(context, handle, x, y, w, h, zoomed) {
+    if (!zoomed) { x = Math.round(x); y = Math.round(y); }
+    if (!seen(handle, x, y, w, h)) return false;
+    context.drawImage(handle.canvas, x + handle.dx, y + handle.dy);
+    return true;
+  }
+  /* A conventional view or a fractional, scaled Camera.view(). */
   function draw(context, view) {
-    const {viewX, viewY} = view, w = view.viewW, h = view.viewH;
+    const {viewX, viewY, viewW: w, viewH: h, scale} = view;
+    const zoomed = scale !== undefined;
     stats.items = items.length; stats.drawn = stats.shadows = stats.culled = 0;
     const ground = [], standing = [], overlay = [];
     for (const item of items) (item.layer === 'ground' ? ground : item.layer === 'overlay' ? overlay : standing).push(item);
-    for (const item of ground) drawItem(context, item, viewX, viewY, w, h);
-    for (const item of standing) {
-      const handle = shadowOf(item);
-      if (!handle) continue;
-      const z = item.z || 0, sx = item.x - viewX + z * Voxel.SHADOW_X, sy = item.y - viewY + z * Voxel.SHADOW_Y;
-      if (seen(handle, sx, sy, w, h)) { Voxel.draw(context, handle, sx, sy); stats.shadows++; }
+    if (zoomed) {
+      context.save();
+      context.imageSmoothingEnabled = false;
+      context.scale(scale, scale);
     }
-    // A stable sort by sortY (y by default): equal ones keep the order they were added in.
-    const keys = standing.map(item => item.sortY ?? item.y);
-    const order = standing.map((_, i) => i).sort((a, b) => keys[a] - keys[b] || a - b);
-    for (const i of order) drawItem(context, standing[i], viewX, viewY, w, h);
-    for (const item of overlay) drawItem(context, item, viewX, viewY, w, h);
+    try {
+      for (const item of ground) drawItem(context, item, viewX, viewY, w, h, zoomed);
+      for (const item of standing) {
+        const handle = shadowOf(item);
+        if (!handle) continue;
+        const z = item.z || 0, sx = item.x - viewX + z * Voxel.SHADOW_X, sy = item.y - viewY + z * Voxel.SHADOW_Y;
+        if (drawHandle(context, handle, sx, sy, w, h, zoomed)) stats.shadows++;
+      }
+      // Array sorting is stable, so equal depths keep their insertion order.
+      standing.sort((a, b) => (a.sortY ?? a.y) - (b.sortY ?? b.y));
+      for (const item of standing) drawItem(context, item, viewX, viewY, w, h, zoomed);
+      for (const item of overlay) drawItem(context, item, viewX, viewY, w, h, zoomed);
+    } finally {
+      if (zoomed) context.restore();
+    }
     return stats;
   }
   return {items, add, clear, draw, stats};

@@ -50,3 +50,18 @@ export function createCamera({viewW = 320, viewH = 180, worldW = Infinity, world
   };
   return camera;
 }
+
+/* A fractional, zoomable view centred on an interpolated simulation position. */
+export function view(subject, {width: w, height: h}, scale = 1, previous = subject, blend = 1) {
+  const position = {
+    x: previous.x + (subject.x - previous.x) * blend,
+    y: previous.y + (subject.y - previous.y) * blend,
+  };
+  const viewW = w / scale, viewH = h / scale;
+  const x = position.x - viewW / 2, y = position.y - viewH / 2;
+  return {
+    x, y, w, h, scale, position, viewX: x, viewY: y, viewW, viewH,
+    toScreen: point => ({x: (point.x - x) * scale, y: (point.y - y) * scale}),
+    toWorld: point => ({x: x + point.x / scale, y: y + point.y / scale}),
+  };
+}

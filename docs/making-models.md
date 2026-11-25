@@ -80,13 +80,18 @@ small palette (8 to 24 colours) so lighting, not dithering, does the shading.
 
 ### Going from code to a sheet and back
 
-Rough out the shape in code, export it, have it painted, load the painted sheet:
+Rough out the shape in code, export it, and have it painted. If the paint has drifted beyond the voxel edges, fit its shading back to the original geometry:
 
 ```bash
-node tools/model-to-sheet.js examples/02-model-viewer/models.js barrel barrel-slices.png
+node tools/model-to-sheet.js examples/02-model-viewer/models.js barrel barrel-template.png
+node tools/fit-sheet.js barrel-template.png barrel-painted.png barrel-slices.png
 ```
 
-The viewer (`examples/02-model-viewer/`) shows any sheet dropped on the page.
+The fitter keeps the template’s occupied pixels and palette families, sampling
+luminance from the painted image and applying a bounded shade change.
+Use the same atlas layout in both inputs. Load the resulting sheet with the
+options printed by the exporter. Review the assembled model over a full turn
+in the [model viewer](../examples/02-model-viewer/).
 
 ### A brief for an artist
 

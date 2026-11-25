@@ -77,3 +77,35 @@ export function drawOn(ground, draw) {
   }
 }
 export {TILE};
+
+// Quantize elevation above the base plane for drawing. The collision map
+// can keep the original horizontal coordinates.
+export function createRelief({waterLevel, highestPoint, sliceHeight = 0.75, rise = 0.72, shoreBlend = 5}) {
+  return {
+    sliceHeight,
+    layerSpacing: sliceHeight * rise,
+    maxLift: Math.max(0, Math.ceil((highestPoint - waterLevel) * rise)),
+    lift(elevation, waterDistance) {
+      if (waterDistance >= 0) return 0;
+      const inland = Math.min(1, shoreBlend > 0 ? -waterDistance / shoreBlend : 1);
+      const height = Math.max(0, elevation - waterLevel) * inland;
+      return Math.floor(height / sliceHeight) * sliceHeight * rise;
+    },
+  };
+}
+
+export function writeReliefColumn(image, column, top, foot, tone, strata, mask) {
+  const {width, height, data} = image;
+  const spacing = Math.max(1, strata);
+  for (let row = Math.max(top, 0); row <= Math.min(foot, height - 1); row++) {
+    const at = (row * width + column) * 4;
+    const depth = row - top;
+    const seam = depth % spacing === spacing - 1;
+    const shade = depth === 0 ? 0 : 11 + Math.min(12, depth * 1.3) + (seam ? 3 : 0);
+    data[at] = tone[0] - shade + (depth ? 4 : 0);
+    data[at + 1] = tone[1] - shade - (depth ? 3 : 0);
+    data[at + 2] = tone[2] - shade;
+    data[at + 3] = 255;
+    if (mask) mask[at >> 2] = 0;
+  }
+}
