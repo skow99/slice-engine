@@ -4,24 +4,27 @@ import {readFileSync} from 'node:fs';
 import {decodePNG} from '../../tools/png.js';
 import {sunAt} from '../daylight.js';
 import {createFleet} from '../fleet.js';
-import {offset} from '../fleet-navigation.js';
+import {distance, offset} from '../fleet-navigation.js';
 import {createLakeMap} from '../lake.js';
 import {createWorldMap, worldBounds} from '../lake-world.js';
 import {portContact, ports} from '../ports.js';
-import {entryBuoy, findRegattaCourse} from '../regatta-course.js';
-import {countdownLength, createRegatta} from '../regatta.js';
+import {findRegattaCourse, regattas, registrationSeconds} from '../regatta-course.js';
+import {createRegatta} from '../regatta.js';
 import {hull, makeBoat} from '../sailing.js';
 import {defaultWind} from '../wind.js';
 
 const world = {...createWorldMap(createLakeMap(decodePNG(readFileSync(new URL('../map/terrain.png', import.meta.url))).data)), portContact};
 const clear = {mode: 'clear'};
+const {buoy: entryBuoy, countdown: countdownLength} = regattas[0];
 const onLine = (line, along, across = 0) => ({...offset(offset(line.center, line.heading, along), line.heading + Math.PI / 2, across), heading: line.heading});
 
 function registered(strict = false) {
   const race = createRegatta(world);
   const boat = {...makeBoat(), ...entryBuoy};
   const tick = (dt = 1 / 60, weather = clear) => race.update(dt, defaultWind, weather);
-  assert.ok(race.enter(boat, defaultWind, clear, strict, []));
+  race.approach(boat, defaultWind, clear, []);
+  assert.ok(race.enter(boat, defaultWind, clear, strict));
+  for (const boat of race.boats) Object.assign(boat, onLine(race.course.start, -28, (race.boats.indexOf(boat) - 1) * 16));
   tick();
   assert.equal(race.phase, 'staging');
   const {start} = race.course;
@@ -45,7 +48,9 @@ test('registration needs proximity and race weather and the lake fits a course a
   Object.assign(boat, entryBuoy);
   assert.equal(race.enter(boat, {...defaultWind, speed: 0}, clear, false, []), false);
   assert.equal(race.enter(boat, defaultWind, {mode: 'storm'}, false, []), false);
-  for (let degrees = 0; degrees < 360; degrees += 10) assert.ok(findRegattaCourse(degrees * Math.PI / 180, world), String(degrees));
+  for (const event of regattas) for (let degrees = 0; degrees < 360; degrees += 5) {
+    assert.ok(findRegattaCourse(degrees * Math.PI / 180, world, event), `${event.id} ${degrees}`);
+  }
 });
 
 test('an early boat must return fully behind the line and cross between the ends after the horn', () => {
@@ -133,4 +138,76 @@ test('a thunderstorm closes the event and releases the engine lock', () => {
   assert.equal(race.phase, 'results');
   assert.equal(race.locked, false);
   assert.ok(race.standings().every(entry => entry.status === 'DNF'));
+});
+
+
+test('registration expires after two minutes and requires leaving and returning to the buoy', () => {
+  const race = createRegatta(world);
+  const boat = {...makeBoat(), ...regattas[1].buoy};
+  const approach = () => race.approach(boat, defaultWind, clear, []);
+  approach();
+  assert.equal(race.phase, 'registration');
+  assert.equal(race.boats.length, 5);
+  race.update(4 * (registrationSeconds - 1), defaultWind, clear, registrationSeconds - 1);
+  assert.equal(race.registrationLeft, 1);
+  Object.assign(boat, offset(regattas[1].buoy, 0, 30));
+  approach();
+  assert.equal(race.enter(boat, defaultWind, clear, false), false);
+  race.update(4, defaultWind, clear, 1);
+  assert.equal(race.phase, 'idle');
+  assert.equal(race.boats.length, 0);
+  Object.assign(boat, regattas[1].buoy);
+  approach();
+  assert.equal(race.blocked, true);
+  assert.equal(race.enter(boat, defaultWind, clear, false), false);
+  Object.assign(boat, offset(regattas[1].buoy, 0, 40));
+  approach();
+  Object.assign(boat, regattas[1].buoy);
+  approach();
+  assert.equal(race.registrationLeft, registrationSeconds);
+  assert.ok(race.enter(boat, defaultWind, clear, false));
+});
+
+test('each fleet sails while registration is open and assembles before the warning signal', () => {
+  for (const event of regattas) {
+    const race = createRegatta(world);
+    const fleet = createFleet(world, worldBounds, ports, race);
+    const boat = {...makeBoat(), ...event.buoy};
+    const dt = 1 / 60;
+    function tick() {
+      fleet.update(dt, {player: boat, playerFixed: true, minute: 720, sun: sunAt(720), weather: clear, wind: {at: () => defaultWind}});
+      race.update(dt, defaultWind, clear);
+    }
+    race.approach(boat, defaultWind, clear, []);
+    assert.equal(race.boats.length, event.crews);
+    assert.equal(race.course.marks.length, event.marks.length);
+    const positions = race.boats.map(({x, y}) => ({x, y}));
+    for (let i = 0; i < 1200; i++) tick();
+    assert.ok(race.boats.every((boat, index) => boat.sail && !boat.engine
+      && Math.hypot(boat.x - positions[index].x, boat.y - positions[index].y) > 8), event.name);
+    assert.ok(race.enter(boat, defaultWind, clear, false));
+    Object.assign(boat, race.course.ready, {sail: true});
+    tick();
+    assert.equal(race.phase, 'staging');
+    for (let i = 0; i < 60 * 160 && race.phase === 'staging'; i++) tick();
+    assert.equal(race.phase, 'countdown', event.name);
+    assert.equal(race.time, -event.countdown);
+    for (let i = 0; i < 60 * (event.limit + event.countdown) && race.phase !== 'results'; i++) tick();
+    assert.equal(race.phase, 'results', event.name);
+    assert.ok(race.standings().filter(entry => entry.status === 'finished').length >= (event.id === 'strzelce' ? 5 : event.crews), event.name);
+  }
+});
+
+
+test('courses get longer while the fleet grows and the rounding gates narrow', () => {
+  let previous = 0;
+  for (const event of regattas) {
+    const course = findRegattaCourse(defaultWind.from, world, event);
+    const route = [course.start.center, ...course.marks.map(({gate}) => gate.center), course.finish.center];
+    const length = route.slice(1).reduce((total, point, i) => total + distance(route[i], point), 0);
+    assert.ok(length > previous + 100, event.name);
+    previous = length;
+  }
+  assert.deepEqual(regattas.map(event => event.crews + 1), [4, 6, 8]);
+  assert.deepEqual(regattas.map(event => event.gateWidth), [22, 19, 17]);
 });

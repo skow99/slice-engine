@@ -156,3 +156,11 @@ Mazury `0.2.0-regatta.1` adds a fleet race off Ekomarina. **Sail out** and selec
 The new orange buoy uses a painted 16-slice atlas. Chrome checked the assembled model in the rotating viewer and checked the chart and registration guidance at 390 px width. A Chrome playthrough used the normal controls to reach the buoy, register, arm the countdown, start legally, round all three marks and finish second. The tests cover both start modes, exact signal timing, mark order and direction, weather cancellation, and a zero-traffic race in which all three volunteers finish. All 74 Mazury tests and all 30 Slice Engine tests pass.
 
 The regatta preview is versioned separately from the engine and remains undeployed. The prior Oracle deployment stays on its existing release. Safari and broader race balancing in variable conditions remain open for this preview.
+
+## Three regatta courses
+
+Mazury `0.2.0-regatta.2` has registration buoys for Ekomarina Sprint, Wilkasy Cup and Strzelce Challenge. Their fleets have 4, 6 and 8 boats including the player. Their three, four and five rounding marks form courses of roughly 430, 590 and 730 game metres. The harder events narrow the rounding gates, shorten the start countdown and increase the AI pace. The [local play guide](../README.md#niegocin-regatta) has the controls.
+
+The AI crews sail around the buoy during registration and assemble behind the start line after entry. Registration closes two minutes after arrival during active play at every game speed. Retrying requires leaving the buoy area and sailing back. The chart and whole-lake view label all three buoys. The existing buoy slice model is reused.
+
+All 77 game tests pass. Fixed-step tests exercised registration expiry and re-entry, all three fleets under sail, and the resulting races. Every AI entrant finished the Sprint and Cup in the default wind test. Five of the seven Strzelce volunteers finished. The Codex browser displayed all three labels on each map and selected Strzelce from the Regatta menu. The local preview is available at `/mazury/`. The build has not been deployed.

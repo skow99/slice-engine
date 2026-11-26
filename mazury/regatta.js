@@ -1,13 +1,10 @@
 import {angleDelta, bearing, distance, offset} from './fleet-navigation.js';
-import {entryBuoy, entryRange, findRegattaCourse, lineCrossing, linePosition, stagingDepth} from './regatta-course.js';
+import {entryRange, findRegattaCourse, lineCrossing, linePosition, regattas, registrationSeconds, stagingDepth} from './regatta-course.js';
 import {boatSpeed, hull, makeBoat} from './sailing.js';
 
-export const countdownLength = 24;
 const lateStart = 36;
-const raceLimit = 360;
-const closingWindow = 125;
 const terminal = new Set(['finished', 'OCS', 'DNS', 'DNF']);
-const volunteers = ['Szkwał', 'Mistral', 'Wicher'];
+const volunteers = ['Szkwał', 'Mistral', 'Wicher', 'Szot', 'Bora', 'Pasat', 'Sirocco'];
 const pose = ({x, y, heading}) => ({x, y, heading});
 
 function racer(boat, name, lane = 0) {
@@ -32,46 +29,73 @@ function crossHull(before, after, gate, earliest = 0) {
 
 export function createRegatta(world) {
   let course, player, entries = [], phase = 'idle', strict = false;
-  let time = 0, firstFinish = Infinity, notice = '', signal;
+  let event = regattas[0];
+  let time = 0, firstFinish = Infinity, notice = '', signal, registrationLeft = 0;
+  const blocked = new Set();
   const active = () => phase === 'countdown' || phase === 'racing';
   const badWeather = (wind, weather) => weather.mode === 'storm' || wind.speed > 9;
+  const finishCloses = () => Math.min(event.limit, firstFinish + event.closing);
 
-  function enter(boat, wind, weather, strictStart, traffic) {
-    if (phase !== 'idle' || distance(boat, entryBuoy) > entryRange || boat.anchor || boat.capsized || boat.moored) return false;
+  function select(id) {
+    if (phase !== 'idle') return;
+    const choice = regattas.find(item => item.id === id);
+    if (choice) {
+      event = choice;
+      if (!blocked.has(event)) notice = '';
+    }
+  }
+
+  function approach(boat, wind, weather, traffic) {
+    for (const item of blocked) {
+      if (distance(boat, item.buoy) > entryRange + 8) blocked.delete(item);
+    }
+    if (phase !== 'idle' || boat.capsized || boat.moored) return;
+    const here = regattas.find(item => distance(boat, item.buoy) <= entryRange);
+    if (!here) return;
+    event = here;
+    if (blocked.has(here)) return;
     if (badWeather(wind, weather) || wind.speed < 1.3) {
       notice = 'Registration needs a breeze of 3–17 kn and no thunderstorm.';
-      return false;
+      return;
     }
-    const layout = findRegattaCourse(wind.from, world);
+    const layout = findRegattaCourse(wind.from, world, event);
     if (!layout) {
       notice = 'Race committee is waiting for a clear course.';
+      return;
+    }
+    const orbit = Array.from({length: 16}, (_, i) => offset(event.buoy, i * Math.PI / 8, 36));
+    const free = orbit.filter(point => [boat, ...traffic].every(vessel => distance(vessel, point) >= 9));
+    if (free.length < event.crews) {
+      notice = 'The registration area is crowded.';
+      return;
+    }
+    entries = volunteers.slice(0, event.crews).map((name, index) => {
+      const point = free[Math.floor(index * free.length / event.crews)];
+      const leg = orbit.indexOf(point);
+      const heading = bearing(point, orbit[(leg + 2) % orbit.length]);
+      const vessel = {...makeBoat(), ...point, name, heading, deployment: .72,
+        sail: true, vx: 1.8 * Math.cos(heading), vy: 1.8 * Math.sin(heading), regatta: true};
+      const lane = (index / (event.crews - 1) - .5) * (layout.start.width - 16);
+      return {...racer(vessel, name, lane), orbit, leg: (leg + 2) % orbit.length, index};
+    });
+    course = layout;
+    phase = 'registration';
+    registrationLeft = registrationSeconds;
+    notice = '';
+  }
+
+  function enter(boat, wind, weather, strictStart) {
+    if (phase !== 'registration' || registrationLeft <= 0 || distance(boat, event.buoy) > entryRange
+        || boat.anchor || boat.capsized || boat.moored) return false;
+    if (badWeather(wind, weather) || wind.speed < 1.3) {
+      notice = 'Waiting for race weather.';
       return false;
     }
     strict = strictStart;
-    course = layout;
-    player = racer(boat, 'You');
-    entries = [player];
-    const occupied = [...traffic, boat];
-    const positions = [-18, 0, 18].flatMap((lane, i) => [18 + i * 5, 36, 45].map(depth => ({lane, depth})));
-    for (const name of volunteers) {
-      const spot = positions.find(({lane, depth}) => {
-        const at = offset(offset(course.start.center, course.start.heading, -depth), course.start.heading + Math.PI / 2, lane);
-        return occupied.every(vessel => distance(vessel, at) >= 8);
-      });
-      if (!spot) {
-        entries = [];
-        course = player = undefined;
-        notice = 'The starting area is crowded. Try registration again in a moment.';
-        return false;
-      }
-      const {lane, depth} = spot;
-      const position = offset(offset(course.start.center, course.start.heading, -depth), course.start.heading + Math.PI / 2, lane);
-      const vessel = {...makeBoat(), ...position, name, heading: course.start.heading, regatta: true};
-      occupied.push(vessel);
-      entries.push(racer(vessel, name, lane));
-    }
-    phase = 'staging';
     notice = '';
+    player = racer(boat, 'You');
+    entries.unshift(player);
+    phase = 'staging';
     return true;
   }
 
@@ -79,21 +103,28 @@ export function createRegatta(world) {
     phase = 'idle';
     course = player = undefined;
     entries = [];
-    time = 0;
+    time = registrationLeft = 0;
     firstFinish = Infinity;
     notice = '';
     signal = undefined;
   }
 
+  function abandon(message) {
+    blocked.add(event);
+    clear();
+    notice = message;
+  }
+
   function retire() {
-    if (phase === 'staging') clear();
+    if (phase === 'registration') abandon('Registration closed. Leave the buoy area and return to try again.');
+    else if (phase === 'staging') abandon('Entry cancelled. Leave the buoy area and return to try again.');
     else if (active() && !terminal.has(player.status)) player.status = 'DNF';
     else if (phase === 'results' || terminal.has(player?.status)) clear();
   }
 
   function startArea(boat) {
     const {along, across} = linePosition(boat, course.start);
-    return along >= -stagingDepth && along <= -4 && Math.abs(across) <= course.start.width / 2;
+    return along >= -stagingDepth && along <= -5 && Math.abs(across) <= course.start.width / 2;
   }
 
   function updateRacer(entry, before, after) {
@@ -154,7 +185,12 @@ export function createRegatta(world) {
     firstFinish = Math.min(firstFinish, entry.finished);
   }
 
-  function update(dt, wind, weather) {
+  function update(dt, wind, weather, registrationDt = dt) {
+    if (phase === 'registration') {
+      registrationLeft = Math.max(0, registrationLeft - registrationDt);
+      if (registrationLeft <= 1e-8) abandon('Race abandoned. Sail out of the buoy area, then return to register.');
+      return;
+    }
     if (phase === 'staging') {
       if (!startArea(player.boat)) return;
       if (badWeather(wind, weather) || wind.speed < 1.3) {
@@ -166,9 +202,13 @@ export function createRegatta(world) {
         notice = 'Raise the main, weigh anchor and slow below 13 kn to arm the clock.';
         return;
       }
+      if (!entries.every(entry => startArea(entry.boat))) {
+        notice = 'The volunteer crews are sailing to the starting area.';
+        return;
+      }
       notice = '';
       phase = 'countdown';
-      time = -countdownLength;
+      time = -event.countdown;
       Object.assign(player.boat, {engine: false, engineBoost: false, gear: 0});
       for (const entry of entries) {
         entry.previous = pose(entry.boat);
@@ -195,7 +235,7 @@ export function createRegatta(world) {
       updateRacer(entry, before, time);
       entry.previous = pose(entry.boat);
     }
-    const limit = Math.min(raceLimit, firstFinish + closingWindow);
+    const limit = finishCloses();
     if (time >= limit) {
       for (const entry of entries) if (!terminal.has(entry.status)) entry.status = 'DNF';
       notice = firstFinish === Infinity ? 'Race time limit reached.' : 'The finishing window closed.';
@@ -205,13 +245,22 @@ export function createRegatta(world) {
 
   function pilot(vessel, wind) {
     const entry = entries.find(entry => entry.boat === vessel);
-    const index = entries.indexOf(entry);
-    if (terminal.has(entry.status) || !active() || time < -[0, 5, 4, 3][index]) return null;
+    if (!entry || terminal.has(entry.status) || phase === 'results') return null;
     const {start, marks, finish} = course;
+    const waiting = phase === 'registration';
+    const launch = -3 - (entry.index % 3);
+    const assembling = phase === 'staging' || phase === 'countdown' && time < launch;
     let aim, rounding = false;
-    if (entry.status === 'starting') {
-      const lane = offset(start.center, start.heading + Math.PI / 2, entry.lane * .8);
-      aim = offset(lane, start.heading, entry.recall ? -21 : 13);
+    if (waiting) {
+      if (distance(vessel, entry.orbit[entry.leg]) < 13) entry.leg = (entry.leg + 1) % entry.orbit.length;
+      aim = entry.orbit[entry.leg];
+    } else if (assembling) {
+      const lane = offset(start.center, start.heading + Math.PI / 2, entry.lane);
+      aim = offset(lane, start.heading, -19 - (entry.index % 3) * 6);
+      if (distance(vessel, aim) < 8 && startArea(vessel)) return null;
+    } else if (entry.status === 'starting') {
+      const lane = offset(start.center, start.heading + Math.PI / 2, entry.lane * .85);
+      aim = offset(lane, start.heading, entry.recall ? -23 : 15);
     } else if (entry.mark === marks.length) {
       const at = linePosition(vessel, finish);
       aim = offset(finish.center, finish.heading, at.along > 5 ? -18 : 14);
@@ -236,7 +285,7 @@ export function createRegatta(world) {
       heading = wind.from + entry.tack * .94;
     } else entry.tack = Math.sign(relative);
     const turn = angleDelta(heading, vessel.heading);
-    const limit = [0, 4.65, 4.28, 4.48][index];
+    const limit = waiting ? 2.35 : assembling ? 3.35 : event.pace + [0.30, -.12, .12, -.07][entry.index % 4];
     return {heading, reef: wind.speed >= 7.1 ? .52 : wind.speed >= 5.2 ? .78 : 1,
       speedLimit: Math.min(limit, rounding ? 2.85 : Infinity, Math.abs(turn) > .7 ? 3.15 : Infinity)};
   }
@@ -250,18 +299,20 @@ export function createRegatta(world) {
   }
 
   function target() {
-    if (phase === 'idle') return entryBuoy;
+    if (phase === 'idle' || phase === 'registration') return event.buoy;
     if (phase === 'staging' || player.recall && player.status === 'starting') return course.ready;
     if (!terminal.has(player.status)) return player.status === 'starting' ? course.start.center
       : course.marks[player.mark]?.gate.center ?? course.finish.center;
     return null;
   }
 
-  return {enter, update, pilot, retire, standings, target,
+  return {approach, enter, update, pilot, retire, standings, target, select,
     get locked() { return active() && !terminal.has(player.status); },
     get phase() { return phase; }, get course() { return course; }, get player() { return player; },
-    get boats() { return entries.slice(1).map(entry => entry.boat); },
-    get finishCloses() { return Math.min(raceLimit, firstFinish + closingWindow); },
+    get boats() { return entries.slice(player ? 1 : 0).map(entry => entry.boat); },
+    get finishCloses() { return finishCloses(); },
+    get event() { return event; }, get registrationLeft() { return registrationLeft; },
+    get blocked() { return blocked.has(event); },
     get time() { return time; }, get notice() { return notice; }, get strict() { return strict; },
     takeSignal() { const cue = signal; signal = undefined; return cue; },
   };

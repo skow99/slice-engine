@@ -19,6 +19,7 @@ import {survey} from './map/survey.js';
 import {drawPorts, drawWarningTowers, portContact, portNear, ports, walkAtPort} from './ports.js';
 import {createWaterReflections} from './reflections.js';
 import {createRegatta} from './regatta.js';
+import {regattas} from './regatta-course.js';
 import {bindRegattaPanel, drawRegatta, loadRegattaBuoy} from './regatta-view.js';
 import {createSailedTrack, drawDestination} from './route.js';
 import {berthStatus, boatSpeed, canGoosewing, hull, jibTrim, knotsPerMeterPerSecond, makeBoat, makeFast, noGoAngle, rightBoat, sailTrim, stepBoat, toggleAnchor, toggleGoosewing, toggleMast, trimSteps} from './sailing.js';
@@ -268,7 +269,7 @@ async function boot() {
   const regattaPanel = bindRegattaPanel(regatta, boat, {
     refresh: refreshControls,
     enter(strict) {
-      if (phase === 'sailing' && regatta.enter(boat, wind.at(boat), weather.read(), strict, fleet.boats)) {
+      if (phase === 'sailing' && regatta.enter(boat, wind.at(boat), weather.read(), strict)) {
         enableAudio();
         refreshTraffic();
       }
@@ -391,6 +392,12 @@ async function boot() {
   });
   function chooseWaypoint({x, y}) {
     const at = {x: selectionView.x + x / selectionView.scale, y: selectionView.y + y / selectionView.scale};
+    const regattaBuoy = regattas.find(event => Math.hypot(at.x - event.buoy.x, at.y - event.buoy.y) < 7 / selectionView.scale);
+    if (regattaBuoy) {
+      regatta.select(regattaBuoy.id);
+      setDestination({id: 'waypoint', name: regattaBuoy.name, berth: regattaBuoy.buoy});
+      return;
+    }
     if (!birdWaterAt(at.x, at.y)) {
       const port = portNear(at, 3 / selectionView.scale);
       if (port) setDestination(port);
@@ -974,10 +981,13 @@ async function boot() {
           const minute = skyClock.minute();
           skyClock.tick(dt);
           if (skyClock.minute() < minute) dailyWeather = createDailyWeather(++weatherSeed);
+          if (phase === 'sailing' && regatta.phase === 'idle') {
+            regatta.approach(boat, wind.at(boat), weatherFrame, fleet.boats);
+          }
           fleet.update(dt, {player: boat, playerFixed: !!walker, minute: skyClock.minute(), sun: skyClock.read().sun,
             weather: weatherFrame, wind});
           if (regatta.phase !== 'idle') {
-            regatta.update(dt, wind.at(boat), weatherFrame);
+            regatta.update(dt, wind.at(boat), weatherFrame, dt / gameSpeed);
             const cue = regatta.takeSignal();
             if (cue) audio.raceSignal(cue);
           }
@@ -1234,7 +1244,8 @@ async function boot() {
       crows: crows.status(), fishRises: fishRises.status(),
       storks: storks.birds.map(({x, y, mode, altitude, feed}) => ({x, y, mode, altitude, feed})),
       showTrack, trackPoints: track.length, destination, fleet: fleet.status(),
-      regatta: {phase: regatta.phase, time: regatta.time, target: regatta.target(), course: regatta.course,
+      regatta: {phase: regatta.phase, event: regatta.event.id, registrationLeft: regatta.registrationLeft,
+        boats: regatta.boats.map(({name, x, y, sail}) => ({name, x, y, sail})), time: regatta.time, target: regatta.target(), course: regatta.course,
         standings: regatta.standings().map(({name, mark, status, recall, splits, finished}) => ({name, mark, status, recall, splits, finished}))},
     });
   }

@@ -8,9 +8,17 @@ Start at Ekomarina to practise mooring and stepping ashore, or sail out onto the
 
 ## Niegocin regatta
 
-Choose **Sail out**, then select **Regatta** for the registration buoy's bearing and range. Sail within 24 m and enter to race three volunteer crews. Raise your main and ease into the shaded starting area to arm a 24-second countdown. The race uses sail power from the warning signal.
+Choose **Sail out**, then open **Regatta** and select a course for the buoy's bearing and range. All three buoys are marked on the **Lake map** and **Whole lake** views. Click a buoy in **Whole lake** to set a destination.
 
-Cross the line in the arrow direction at zero, then round the three numbered buoys in order with each buoy to port. The dashed gate at the next buoy shows where to pass. The first leg rewards an efficient tack. On the reaches, trim for speed and plan your turn before you reach the mark. Finish between the two finish buoys and check your result against the fleet.
+| Course | Difficulty | Boats including yours | Marks | Approximate course length |
+| --- | --- | ---: | ---: | ---: |
+| Ekomarina Sprint | Easy | 4 | 3 | 430 m |
+| Wilkasy Cup | Intermediate | 6 | 4 | 590 m |
+| Strzelce Challenge | Hard | 8 | 5 | 730 m |
+
+Registration opens within 24 m of the buoy. The volunteer crews sail around it while you have two minutes of active play to enter. If you miss the deadline, sail outside the buoy area and return. After entering, raise the main and sail into the shaded starting area. The countdown starts once the fleet is assembled. It runs for 24, 22, or 19 seconds by course, and the race uses sail power from the warning signal.
+
+Cross the line in the arrow direction at zero, then round the numbered buoys in order with each buoy to port. The dashed gate at the next buoy shows where to pass. The first leg rewards an efficient tack. On the reaches, trim for speed and plan your turn before you reach the mark. Finish between the two finish buoys and check your result against the fleet.
 
 If you cross early, return fully behind the line and start again. Select **Strict start** at registration for immediate DNF on an early crossing. [Regatta research and game rules](docs/mazury-regatta-research.md)
 

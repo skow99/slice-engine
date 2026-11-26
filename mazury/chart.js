@@ -91,7 +91,7 @@ export function createChart(canvas, lake, detailed = false) {
     if (race) drawRegatta(context, {w, h, toScreen(point) {
       const at = toSurvey(point.x, point.y);
       return {x: px(at.x / survey.metersPerPixel), y: py(at.y / survey.metersPerPixel)};
-    }}, race, {compact: true, guiding: detailed});
+    }}, race, {compact: true, guiding: detailed, labels: detailed});
     const point = destination && toSurvey(destination.berth.x, destination.berth.y);
     const target = point && {x: px(point.x / survey.metersPerPixel), y: py(point.y / survey.metersPerPixel)};
     if (target) {

@@ -1,6 +1,6 @@
 import {Model, Voxel} from '../src/index.js';
 import {distance} from './fleet-navigation.js';
-import {entryBuoy, entryRange} from './regatta-course.js';
+import {entryRange, regattas} from './regatta-course.js';
 import {windBearing} from './wind.js';
 
 const orange = '#ffb467';
@@ -37,11 +37,12 @@ function direction(context, at, aim, color) {
   context.restore();
 }
 
-export function drawRegatta(context, view, race, {sprite, time = 0, guiding = true, compact = false} = {}) {
+export function drawRegatta(context, view, race, {sprite, time = 0, guiding = true, compact = false, labels = true} = {}) {
   const course = race.course;
   const next = guiding && race.target();
   const project = view.toScreen;
-  const courseVisible = course && race.phase !== 'results';
+  const courseVisible = course && !['registration', 'results'].includes(race.phase);
+  const approaching = race.phase === 'idle' || race.phase === 'registration';
   context.save();
   context.lineJoin = 'round';
   context.lineCap = 'round';
@@ -112,7 +113,11 @@ export function drawRegatta(context, view, race, {sprite, time = 0, guiding = tr
     marker(start.center, 'START', race.phase === 'racing' ? mint : orange, false);
     marker(finish.center, 'FINISH', '#c8deff', false);
     marks.forEach(({mark}, index) => marker(mark, String(index + 1), orange));
-  } else if (race.phase === 'idle') marker(entryBuoy, guiding ? 'REGATTA' : '', orange);
+  }
+  for (const event of regattas) {
+    const label = labels && (compact || guiding && approaching) ? event.name.split(' ')[0] : '';
+    marker(event.buoy, label, event.color);
+  }
   if (next) {
     const at = project(next);
     context.beginPath();
@@ -137,6 +142,11 @@ export function bindRegattaPanel(race, boat, actions) {
   const join = byId('regatta-join');
   const strict = byId('regatta-strict');
   const leave = byId('regatta-leave');
+  const picker = byId('regatta-picker');
+  for (const event of regattas) {
+    picker.add(new Option(`${event.name} · ${event.difficulty}`, event.id));
+  }
+  picker.addEventListener('change', () => { race.select(picker.value); actions.refresh(); });
   const clockFace = byId('regatta-clock');
   const status = byId('regatta-status');
   const detail = byId('regatta-detail');
@@ -152,7 +162,9 @@ export function bindRegattaPanel(race, boat, actions) {
       const phase = race.phase;
       const player = race.player;
       const idle = phase === 'idle';
-      const near = distance(boat, entryBuoy) <= entryRange;
+      const registering = phase === 'registration';
+      const event = race.event;
+      const near = distance(boat, event.buoy) <= entryRange;
       const display = !idle || (show ?? (sailing && near));
       const target = race.target();
       const bearing = target && Math.round(windBearing(Math.atan2(target.y - boat.y, target.x - boat.x))) % 360;
@@ -160,17 +172,24 @@ export function bindRegattaPanel(race, boat, actions) {
       panel.hidden = !display || !sailing && idle && !welcome;
       toggle.disabled = !idle;
       toggle.setAttribute('aria-expanded', String(!panel.hidden));
-      join.hidden = strict.labels[0].hidden = !idle || !near || !sailing;
+      picker.labels[0].hidden = !idle;
+      picker.value = event.id;
+      join.hidden = strict.labels[0].hidden = !registering || !near || !sailing;
       join.disabled = !!boat.anchor;
       leave.hidden = idle;
       results.hidden = !player || !(phase === 'results' || player.finished !== undefined || resultText[player.status]);
       const set = (node, text) => { if (node.textContent !== text) node.textContent = text; };
       let heading, instruction = '', progress = '', timer = '';
       if (idle) {
-        heading = near && sailing ? 'Registration buoy' : 'Find the registration buoy';
-        instruction = race.notice || (welcome ? 'Sail out from Ekomarina to approach the buoy.'
-          : near ? boat.anchor ? 'Weigh anchor to register.' : 'Enter to race three volunteer crews.' : 'Sail within 24 m of the buoy to register.');
-        progress = targetText;
+        heading = race.blocked ? 'Registration closed' : 'Find a regatta buoy';
+        instruction = race.notice || (welcome ? 'Select Sail out to reach the registration buoys.' : 'Sail within 24 m of the selected buoy to register.');
+        progress = `${event.crews + 1} boats · ${event.marks.length} marks · ${targetText}`;
+      } else if (registering) {
+        heading = event.name;
+        instruction = !near ? 'Return within 24 m of the buoy before registration closes.'
+          : boat.anchor ? 'Weigh anchor to enter.' : race.notice || 'Join the waiting fleet before registration closes.';
+        progress = `${event.difficulty} · ${event.crews + 1} boats · ${event.marks.length} marks`;
+        timer = clock(Math.ceil(race.registrationLeft));
       } else if (phase === 'staging') {
         heading = 'Set up behind the line';
         instruction = race.notice || 'Enter the shaded area with your main up to start the countdown.';
@@ -178,7 +197,8 @@ export function bindRegattaPanel(race, boat, actions) {
       } else {
         const standings = race.standings();
         if (player.status === 'finished') {
-          heading = `${['1st', '2nd', '3rd', '4th'][standings.indexOf(player)]} place`;
+          const place = standings.indexOf(player) + 1;
+          heading = `${place}${{1: 'st', 2: 'nd', 3: 'rd'}[place] ?? 'th'} place`;
           timer = clock(player.finished);
         } else if (resultText[player.status]) heading = player.earlyDisqualification ? 'DNF · Early start' : resultText[player.status];
         else if (player.status === 'starting') {
@@ -196,7 +216,7 @@ export function bindRegattaPanel(race, boat, actions) {
         if (!timer && phase === 'countdown') timer = clock(Math.ceil(-race.time));
         if (!timer && phase === 'racing' && !resultText[player.status]) timer = race.time < 2 ? 'GO' : clock(race.time);
         const position = player.status === 'sailing' ? `${standings.indexOf(player) + 1} / ${standings.length}` : '';
-        const closing = !results.hidden || phase !== 'racing' || race.finishCloses - race.time > 125
+        const closing = !results.hidden || phase !== 'racing' || race.finishCloses - race.time > event.closing
           ? '' : `Closes ${clock(Math.ceil(race.finishCloses - race.time))}`;
         progress = [position, targetText, closing].filter(Boolean).join(' · ');
         instruction = race.notice || instruction;
@@ -217,7 +237,7 @@ export function bindRegattaPanel(race, boat, actions) {
       summary.hidden = !progress;
       set(clockFace, timer);
       clockFace.hidden = !timer;
-      set(leave, phase === 'staging' ? 'Cancel entry' : !results.hidden ? 'Back to sailing' : 'Retire');
+      set(leave, registering ? 'Leave registration' : phase === 'staging' ? 'Cancel entry' : !results.hidden ? 'Back to sailing' : 'Retire');
     },
   };
 }
