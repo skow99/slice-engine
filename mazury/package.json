@@ -1,0 +1,12 @@
+{
+  "name": "mazury",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "node ../tools/serve.js 8090",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

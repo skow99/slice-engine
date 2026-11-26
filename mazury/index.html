@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101f21">
+  <title>Mazury · A lake sailing game</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="game">
+    <header class="masthead">
+      <div class="identity">
+        <h1>Mazury</h1>
+        <span id="district">Ekomarina · Giżycko</span>
+      </div>
+      <div class="header-actions">
+        <details id="daylight" class="daylight">
+          <summary class="quiet" title="Time and lighting (L)" aria-label="Time and lighting">
+            <span class="clock-mark" aria-hidden="true"></span>
+            <span id="daylight-readout">12:00</span>
+          </summary>
+          <div class="sky-panel">
+            <canvas id="sky-dial" width="248" height="106" aria-hidden="true"></canvas>
+            <p id="sky-source">Sun</p>
+            <label for="daylight-time">Time of day</label>
+            <input id="daylight-time" type="range" min="0" max="1439" value="720">
+            <div class="sky-scale" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+            <div class="sky-actions">
+              <button id="clock-toggle" type="button">Pause clock</button>
+              <button id="moon-toggle" type="button" aria-pressed="true">Moon on</button>
+            </div>
+          </div>
+        </details>
+        <select id="game-speed" class="quiet" aria-label="Game speed" title="Game speed (X)">
+          <option value="0.5">½×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+        </select>
+        <button id="open-controls" class="quiet" type="button" aria-haspopup="dialog" title="Keyboard controls (H)">Controls</button>
+        <button id="sound" class="quiet" type="button" aria-pressed="true" title="Toggle sound (M)">Sound on</button>
+        <button id="music" class="quiet" type="button" aria-label="Music" aria-pressed="true">Music on</button>
+        <details class="daylight" id="traffic-menu">
+          <summary class="quiet">Traffic</summary>
+          <div class="sky-panel lake-traffic">
+            <label for="traffic-count">Lake traffic</label>
+            <output id="traffic-total" for="traffic-count">5 boats</output>
+            <input id="traffic-count" type="range" min="0" max="30" step="1" value="5">
+          </div>
+        </details>
+      </div>
+    </header>
+
+    <section class="stage" aria-label="Mazury sailing game">
+      <div id="lake" aria-hidden="true"></div>
+      <div class="shade"></div>
+      <p id="waypoint-hint" role="status" hidden>Choose a point on the water to set a destination.</p>
+      <div id="loading" class="loading" role="status">Preparing the lake…</div>
+      <div id="welcome" class="welcome" hidden>
+        <h2>Approach Ekomarina</h2>
+        <p>Follow the dashed line into the marina. Line up inside the marked berth, then select neutral and moor.</p>
+        <div class="arrival-actions">
+          <button id="start" class="primary" type="button" title="Start approach (Enter)">Start approach</button>
+          <button id="explore" type="button" title="Sail out (G)">Sail out</button>
+        </div>
+      </div>
+      <div id="arrival" class="welcome" hidden>
+        <h2 id="arrival-heading">Moored at Ekomarina</h2>
+        <p>Step onto the pontoon or cast off again.</p>
+        <div class="arrival-actions">
+          <button id="step-ashore" class="primary" type="button" title="Step ashore (F)">Step ashore</button>
+          <button id="continue" type="button" title="Cast off again (Enter)">Cast off again</button>
+        </div>
+      </div>
+      <div id="capsize" class="welcome" hidden>
+        <h2>Capsized</h2>
+        <p>Right the boat and continue with both sails down.</p>
+        <button id="right-boat" class="primary" type="button" title="Right the boat (Enter)">Right the boat</button>
+      </div>
+      <div id="mooring" class="landing" hidden>
+        <span id="mooring-note" role="status"></span>
+        <button id="moor" class="primary" type="button" title="Moor (E)" hidden>Moor</button>
+      </div>
+      <div class="instruments">
+        <details id="wind" class="wind-control">
+          <summary class="wind" aria-label="Wind settings" aria-describedby="wind-readout" title="Wind settings (V)">
+            <span aria-hidden="true" class="wind-arrow">↑</span>
+            <span id="wind-readout">5 kt NW</span>
+          </summary>
+          <div class="wind-panel">
+            <label for="wind-bearing">Wind from <output for="wind-bearing"></output></label>
+            <input id="wind-bearing" type="range" min="0" max="359" value="329">
+            <div class="wind-scale" aria-hidden="true"><span>N</span><span>E</span><span>S</span><span>W</span><span>N</span></div>
+            <label for="wind-strength">Steady wind <output for="wind-strength"></output></label>
+            <input id="wind-strength" type="range" min="0" max="28" value="5">
+            <label for="wind-gust">Gust increase <output for="wind-gust"></output></label>
+            <input id="wind-gust" type="range" min="0" max="14" value="4">
+            <div class="wind-actions">
+              <label><input id="wind-automatic" type="checkbox" checked> Auto gusts</label>
+              <button id="wind-bump" type="button" title="Send a gust towards the boat (J)">Gust now</button>
+            </div>
+            <label><input id="wind-variable" type="checkbox"> Variable wind</label>
+            <label><input id="wind-guide" type="checkbox" checked> Bow wind guide</label>
+            <label><input id="weather-auto" type="checkbox"> Automatic weather</label>
+            <label for="weather-mode">Weather</label>
+            <select id="weather-mode">
+              <option value="clear">Clear</option>
+              <option value="light">Light rain</option>
+              <option value="heavy">Heavy rain</option>
+              <option value="storm">Thunderstorm</option>
+            </select>
+            <p id="weather-auto-status" hidden></p>
+            <p id="weather-warning" role="status" hidden></p>
+          </div>
+        </details>
+        <div class="zoom-controls" role="group" aria-label="Zoom">
+          <button id="zoom-out" type="button" class="quiet" aria-label="Zoom out" title="Zoom out (−)">−</button>
+          <button id="zoom-in" type="button" class="quiet" aria-label="Zoom in" title="Zoom in (+)">+</button>
+          <button id="show-track" type="button" class="quiet" aria-pressed="false">Sailed track</button>
+          <button id="zoom" type="button" class="quiet" aria-pressed="false" title="Whole lake (Z)">Whole lake</button>
+          <button id="center-boat" type="button" class="quiet" aria-label="Center boat" title="Center and follow your boat">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+              <circle cx="8" cy="8" r="4.5"/><path d="M8 0v4m0 8v4M0 8h4m8 0h4"/><circle cx="8" cy="8" r="1" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div id="overview-legend" hidden>
+        <span class="overview-north">N ↑</span>
+        <span class="overview-caption"><strong>Niegocin</strong><span id="overview-elevation"></span></span>
+      </div>
+      <div id="trim-readout" class="trim-readout" hidden></div>
+      <div id="sail-progress" class="sail-progress" hidden></div>
+      <div class="boat-status" aria-label="Boat status">
+        <span id="speed">0.0 kn</span>
+        <span id="range">Berth</span>
+      </div>
+    </section>
+
+    <footer class="dashboard" aria-label="Sailing controls">
+      <div id="helm-controls" class="controls">
+        <div class="rudder" aria-label="Steering">
+          <button id="left" type="button" data-action="left" aria-label="Steer left" title="Steer left (A or Left Arrow)">←</button>
+          <button id="right" type="button" data-action="right" aria-label="Steer right" title="Steer right (D or Right Arrow)">→</button>
+        </div>
+        <div class="ballast-control" id="ballast">
+          <button id="ballast-toggle" type="button" aria-expanded="false" aria-controls="ballast-panel" disabled>
+            Ballast <span id="ballast-summary">Off</span>
+          </button>
+          <div id="ballast-panel" hidden>
+            <div class="ballast-sides" role="group" aria-label="Ballast side">
+              <button type="button" data-ballast-side="1" aria-pressed="false" title="Port side (4)">Left</button>
+              <button type="button" data-ballast-side="0" aria-pressed="true" title="Center the crew (5)">Off</button>
+              <button type="button" data-ballast-side="-1" aria-pressed="false" title="Starboard side (6)">Right</button>
+            </div>
+            <label class="ballast-row" for="ballast-kg">Crew weight <output id="ballast-weight" for="ballast-kg">80 kg</output></label>
+            <input id="ballast-kg" type="range" min="0" max="240" step="10" value="80">
+            <div class="ballast-row"><span>Heel</span><output id="ballast-heel" aria-live="off">Level</output></div>
+            <div class="ballast-gauge" aria-hidden="true"></div>
+            <p>Shift weight to the high side to reduce heel.</p>
+          </div>
+        </div>
+        <div class="sail-controls" role="group" aria-label="Mainsail">
+          <button id="sail" type="button" title="Mainsail · Grot (Space)" disabled>Raise main</button>
+          <button id="sheet-in" type="button" title="Sheet in main (Q)" disabled>Sheet in main</button>
+          <button id="ease-sheet" type="button" title="Ease main (T)" disabled>Ease main</button>
+        </div>
+        <div class="sail-controls" role="group" aria-label="Jib">
+          <button id="jib" type="button" title="Jib · Fok (U)" disabled>Raise jib</button>
+          <button id="jib-sheet-in" type="button" title="Sheet in jib (I)" disabled>Sheet in jib</button>
+          <button id="ease-jib-sheet" type="button" title="Ease jib (O)" disabled>Ease jib</button>
+          <button id="goosewing" type="button" title="Spread both sails on a run (Y)" aria-pressed="false" disabled>Na motyla</button>
+        </div>
+        <button id="anchor" type="button" title="Drop or weigh anchor (K)" aria-pressed="false" disabled>Drop anchor</button>
+        <button id="mast" type="button" title="Lower or raise the mast (/)" disabled>Lower mast</button>
+        <button id="engine" type="button" aria-pressed="false" title="Toggle engine (R)" disabled>Engine off</button>
+        <button id="boost" type="button" aria-pressed="false" title="Toggle test engine boost (B)" disabled>Test boost</button>
+        <div class="gears" role="group" aria-label="Engine gear" title="Shift gear with W/S or Up/Down">
+          <button id="astern" type="button" aria-pressed="false" disabled>Astern</button>
+          <button id="neutral" type="button" aria-pressed="true" disabled>Neutral</button>
+          <button id="ahead" type="button" aria-pressed="false" disabled>Ahead</button>
+        </div>
+      </div>
+      <div id="walk-panel" class="walk-panel" hidden>
+        <div id="walk-pad" class="walk-pad" aria-label="Walk on the pontoon">
+          <button type="button" data-action="left" aria-label="Walk left">←</button>
+          <button type="button" data-action="up" aria-label="Walk up">↑</button>
+          <button type="button" data-action="down" aria-label="Walk down">↓</button>
+          <button type="button" data-action="right" aria-label="Walk right">→</button>
+        </div>
+        <button id="board" type="button" title="Board yacht (F)">Board yacht</button>
+        <span id="board-note" role="status">Ashore</span>
+      </div>
+      <button id="open-map" class="chart" aria-label="Lake map" type="button" aria-haspopup="dialog" title="Open the Lake Niegocin chart">
+        <canvas id="map" width="62" height="58" aria-hidden="true"></canvas>
+        <span>Lake map</span>
+      </button>
+    </footer>
+    <dialog id="map-dialog" aria-labelledby="map-heading">
+      <header class="map-header">
+        <h2 id="map-heading">Jezioro Niegocin</h2>
+        <form method="dialog"><button type="submit">Close</button></form>
+      </header>
+      <details id="traffic-roster">
+        <summary>Boats on the lake</summary>
+        <ul id="traffic-boats"></ul>
+      </details>
+      <canvas id="map-overview" width="430" height="460" role="img" aria-label="Lake Niegocin and its ports"></canvas>
+      <label for="destination">Destination</label>
+      <select id="destination"><option value="">None</option><option value="waypoint" hidden>Lake waypoint</option></select>
+      <div id="berth-controls" hidden>
+        <label for="berth-picker">Berth</label>
+        <select id="berth-picker"></select>
+      </div>
+      <button id="start-port" type="button" hidden>Start approach here</button>
+      <p id="port-capacity" class="map-credit"></p>
+      <p class="map-credit">Chart distances are surveyed. The game shortens open water and keeps Ekomarina at metre scale. Topography by GUGiK and WODGiK.</p>
+    </dialog>
+    <dialog id="controls-dialog" aria-labelledby="controls-heading">
+      <header class="map-header">
+        <h2 id="controls-heading">Keyboard controls</h2>
+        <form method="dialog"><button type="submit">Close</button></form>
+      </header>
+      <dl id="shortcuts"></dl>
+    </dialog>
+  </main>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
