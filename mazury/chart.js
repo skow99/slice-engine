@@ -3,6 +3,7 @@ import {drawTrafficMarker} from './fleet-view.js';
 import {height, landCover, width} from './lake.js';
 import {toSurvey} from './lake-world.js';
 import {ports} from './ports.js';
+import {drawRegatta} from './regatta-view.js';
 import {survey} from './map/survey.js';
 
 export function createChart(canvas, lake, detailed = false) {
@@ -84,9 +85,13 @@ export function createChart(canvas, lake, detailed = false) {
     ink.fillText('N ↑', w - left - 30, top + 15);
   }
 
-  return (boat, destination, traffic = []) => {
+  return (boat, destination, traffic = [], race) => {
     context.clearRect(0, 0, w, h);
     context.drawImage(background, 0, 0);
+    if (race) drawRegatta(context, {w, h, toScreen(point) {
+      const at = toSurvey(point.x, point.y);
+      return {x: px(at.x / survey.metersPerPixel), y: py(at.y / survey.metersPerPixel)};
+    }}, race, {compact: true, guiding: detailed});
     const point = destination && toSurvey(destination.berth.x, destination.berth.y);
     const target = point && {x: px(point.x / survey.metersPerPixel), y: py(point.y / survey.metersPerPixel)};
     if (target) {

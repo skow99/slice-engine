@@ -42,6 +42,7 @@
         <button id="open-controls" class="quiet" type="button" aria-haspopup="dialog" title="Keyboard controls (H)">Controls</button>
         <button id="sound" class="quiet" type="button" aria-pressed="true" title="Toggle sound (M)">Sound on</button>
         <button id="music" class="quiet" type="button" aria-label="Music" aria-pressed="true">Music on</button>
+        <button id="regatta-toggle" class="quiet" type="button" aria-expanded="false" aria-controls="regatta-panel">Regatta</button>
         <details class="daylight" id="traffic-menu">
           <summary class="quiet">Traffic</summary>
           <div class="sky-panel lake-traffic">
@@ -137,6 +138,18 @@
         <span id="speed">0.0 kn</span>
         <span id="range">Berth</span>
       </div>
+      <section id="regatta-panel" class="regatta-panel" aria-label="Niegocin Regatta" hidden>
+        <div class="regatta-heading">
+          <strong id="regatta-status" role="status"></strong>
+          <output id="regatta-clock" aria-live="off" aria-label="Race clock" hidden></output>
+        </div>
+        <p id="regatta-detail"></p>
+        <p id="regatta-summary"></p>
+        <label for="regatta-strict" hidden><input id="regatta-strict" type="checkbox"> Strict start (early crossing is DNF)</label>
+        <ol id="regatta-results" hidden></ol>
+        <button id="regatta-join" class="primary" type="button" hidden>Enter regatta</button>
+        <button id="regatta-leave" class="quiet" type="button" hidden>Retire</button>
+      </section>
     </section>
 
     <footer class="dashboard" aria-label="Sailing controls">

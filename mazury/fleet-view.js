@@ -2,6 +2,7 @@ import {createWake} from './water.js';
 import {yachtLamps} from './yacht-view.js';
 
 export function trafficDescription(boat) {
+  if (boat.regatta) return 'Regatta volunteer';
   const port = boat.port.name;
   if (boat.moored) return (boat.slot.sternTo ? 'Moored stern-first at ' : 'Moored at ') + port;
   if (boat.anchor) return boat.intent === 'lunch' ? 'At anchor for lunch' : 'At anchor in sheltered water';
@@ -32,7 +33,7 @@ export function drawTrafficMarker(context, at, boat, size = 1) {
   context.lineWidth = 1.05;
   context.strokeStyle = '#172f35';
   context.stroke();
-  context.fillStyle = boat.intent === 'shelter' && !boat.moored && !boat.anchor ? '#ffd496' : '#aee4df';
+  context.fillStyle = boat.regatta ? '#f79c62' : boat.intent === 'shelter' && !boat.moored && !boat.anchor ? '#ffd496' : '#aee4df';
   context.fill();
   context.restore();
 }

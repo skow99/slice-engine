@@ -273,6 +273,21 @@ export function createAmbience() {
     thunder(strike, age) {
       if (audio?.state === 'running') playThunder(strike, age);
     },
+    raceSignal(cue) {
+      if (muted || audio?.state !== 'running') return;
+      const now = audio.currentTime;
+      const duration = cue === 'start' ? .62 : .21;
+      const horn = audio.createOscillator();
+      const volume = audio.createGain();
+      horn.type = 'triangle';
+      horn.frequency.value = cue === 'start' ? 392 : 294;
+      volume.gain.setValueAtTime(.001, now);
+      volume.gain.exponentialRampToValueAtTime(.20, now + .04);
+      volume.gain.exponentialRampToValueAtTime(.001, now + duration);
+      horn.connect(volume).connect(output);
+      horn.start(now);
+      horn.stop(now + duration);
+    },
     engine(on, gear, boost) {
       if (audio?.state === 'running') updateEngine(on ? (gear ? (boost ? 2 : 1) : 0) : -1);
     },

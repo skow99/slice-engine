@@ -18,6 +18,8 @@ import {createWorldMap, toGame, toSurvey, worldBounds} from './lake-world.js';
 import {survey} from './map/survey.js';
 import {drawPorts, drawWarningTowers, portContact, portNear, ports, walkAtPort} from './ports.js';
 import {createWaterReflections} from './reflections.js';
+import {createRegatta} from './regatta.js';
+import {bindRegattaPanel, drawRegatta, loadRegattaBuoy} from './regatta-view.js';
 import {createSailedTrack, drawDestination} from './route.js';
 import {berthStatus, boatSpeed, canGoosewing, hull, jibTrim, knotsPerMeterPerSecond, makeBoat, makeFast, noGoAngle, rightBoat, sailTrim, stepBoat, toggleAnchor, toggleGoosewing, toggleMast, trimSteps} from './sailing.js';
 import {loadCottages, sceneryModel} from './settlements.js';
@@ -219,7 +221,9 @@ function drawYacht(context, view, boat, {sprite, metersPerVoxel}) {
 }
 
 async function boot() {
-  const [yachtFrame, map, cottages, birdArt, treeArt] = await Promise.all([loadYacht(), loadLakeMap(), loadCottages(), loadBirdArt(), loadTreeArt()]);
+  const [yachtFrame, map, cottages, birdArt, treeArt, regattaBuoy] = await Promise.all([
+    loadYacht(), loadLakeMap(), loadCottages(), loadBirdArt(), loadTreeArt(), loadRegattaBuoy(),
+  ]);
   const world = {...createWorldMap(map), portContact};
   const skyClock = createSkyClock(element('daylight'));
   let terrain = paintLake(world, cottages, treeArt);
@@ -259,7 +263,23 @@ async function boot() {
   const ballast = bindBallastControls(element('ballast'), boat);
   const wind = createWind();
   const weather = createWeather();
-  const fleet = createFleet(world, worldBounds, ports);
+  const regatta = createRegatta(world);
+  const fleet = createFleet(world, worldBounds, ports, regatta);
+  const regattaPanel = bindRegattaPanel(regatta, boat, {
+    refresh: refreshControls,
+    enter(strict) {
+      if (phase === 'sailing' && regatta.enter(boat, wind.at(boat), weather.read(), strict, fleet.boats)) {
+        enableAudio();
+        refreshTraffic();
+      }
+      refreshControls();
+    },
+    leave() {
+      regatta.retire();
+      refreshTraffic();
+      refreshControls();
+    },
+  });
   const trafficView = createTrafficView();
   const weatherMode = element('weather-mode');
   const autoWeather = element('weather-auto');
@@ -358,15 +378,15 @@ async function boot() {
     waypointHint.textContent = target ? target.name + ' selected. Choose another point to change it.'
       : 'Choose a point on the water to set a destination.';
     refreshChartBerths(target);
-    drawOverview?.(chartBoat(), destination, fleet.boats);
-    drawChart(chartBoat(), destination, fleet.boats);
+    drawOverview?.(chartBoat(), destination, fleet.boats, regatta);
+    drawChart(chartBoat(), destination, fleet.boats, regatta);
     refreshControls();
   }
   destinationPicker.addEventListener('change', () => setDestination(ports.find(port => port.id === destinationPicker.value)));
   berthPicker.addEventListener('change', () => {
     const port = ports.find(port => port.id === destinationPicker.value);
     destination = {...port, ...berthsAt(port)[Number(berthPicker.value)]};
-    drawOverview?.(chartBoat(), destination, fleet.boats);
+    drawOverview?.(chartBoat(), destination, fleet.boats, regatta);
     refreshControls();
   });
   function chooseWaypoint({x, y}) {
@@ -478,10 +498,10 @@ async function boot() {
   }
 
   function refreshTraffic() {
-    const count = fleet.boats.length;
+    const count = fleet.trafficCount;
     trafficTotal.textContent = count === 1 ? '1 boat' : count + ' boats';
     trafficCount.setAttribute('aria-valuetext', trafficTotal.textContent);
-    trafficRoster.hidden = count === 0;
+    trafficRoster.hidden = fleet.boats.length === 0;
     if (!trafficRoster.open) return;
     trafficBoats.replaceChildren(...fleet.boats.map(vessel => {
       const row = document.createElement('li');
@@ -497,8 +517,8 @@ async function boot() {
   function setTraffic() {
     fleet.setCount(trafficCount.valueAsNumber, boat, skyClock.minute(), skyClock.read().sun);
     refreshTraffic();
-    if (mapDialog.open) drawOverview(chartBoat(), destination, fleet.boats);
-    drawChart(chartBoat(), destination, fleet.boats);
+    if (mapDialog.open) drawOverview(chartBoat(), destination, fleet.boats, regatta);
+    drawChart(chartBoat(), destination, fleet.boats, regatta);
   }
   try {
     const saved = localStorage.getItem('mazury.traffic');
@@ -583,7 +603,7 @@ async function boot() {
   }
 
   function toggleEngine() {
-    if (phase !== 'sailing') return;
+    if (phase !== 'sailing' || regatta.locked) return;
     boat.engine = !boat.engine;
     boat.engineBoost = false;
     boat.gear = 0;
@@ -591,7 +611,7 @@ async function boot() {
   }
 
   function toggleBoost() {
-    if (phase !== 'sailing' || boat.anchor) return;
+    if (phase !== 'sailing' || boat.anchor || regatta.locked) return;
     boat.engineBoost = !boat.engineBoost;
     if (boat.engineBoost) {
       boat.engine = true;
@@ -727,6 +747,7 @@ async function boot() {
 
   function refreshControls() {
     const sailing = phase === 'sailing';
+    regattaPanel.refresh(sailing, phase === 'welcome');
     ballast.refresh(sailing || phase === 'arrived');
     const location = chartBoat();
     const localPort = boat.moored ? mooredPort : berthNear(boat);
@@ -784,6 +805,7 @@ async function boot() {
     setText(controls.anchor, boat.anchor ? 'Weigh anchor' : 'Drop anchor');
     controls.anchor.setAttribute('aria-pressed', String(!!boat.anchor));
     controls.sail.disabled = controls.jib.disabled = controls.left.disabled = controls.right.disabled = controls.engine.disabled = !sailing;
+    controls.engine.disabled ||= regatta.locked;
     controls.sail.disabled ||= boat.mastDown || boat.mastFold > 0;
     controls.jib.disabled ||= boat.mastDown || boat.mastFold > 0;
     controls.mast.disabled = (!sailing && phase !== 'arrived') || boat.sail || boat.jib || boat.deployment > 0 || boat.jibDeployment > 0;
@@ -792,7 +814,7 @@ async function boot() {
     setText(controls.jib, boat.jib ? 'Lower jib' : 'Raise jib');
     setText(controls.engine, boat.engine ? 'Engine on' : 'Engine off');
     controls.engine.setAttribute('aria-pressed', String(boat.engine));
-    controls.boost.disabled = !sailing || !!boat.anchor;
+    controls.boost.disabled = !sailing || !!boat.anchor || regatta.locked;
     controls.boost.setAttribute('aria-pressed', String(boat.engineBoost));
     for (const [gear, button] of gearButtons) {
       button.disabled = !sailing || !boat.engine || !!boat.anchor;
@@ -954,6 +976,11 @@ async function boot() {
           if (skyClock.minute() < minute) dailyWeather = createDailyWeather(++weatherSeed);
           fleet.update(dt, {player: boat, playerFixed: !!walker, minute: skyClock.minute(), sun: skyClock.read().sun,
             weather: weatherFrame, wind});
+          if (regatta.phase !== 'idle') {
+            regatta.update(dt, wind.at(boat), weatherFrame);
+            const cue = regatta.takeSignal();
+            if (cue) audio.raceSignal(cue);
+          }
           trafficView.tick(fleet.boats, time);
         }
         const roosting = birdsRoosting(skyClock.read().sun);
@@ -1027,6 +1054,7 @@ async function boot() {
         drawRain(context, lakeView, conditions);
         drawFleetOverview(lakeView);
         if (destination) drawDestination(context, lakeView, destination.berth);
+        drawRegatta(context, lakeView, regatta, {compact: true, guiding: regattaPanel.guiding});
         liveOverview.drawLabels(context, lakeView, boatPosition, boat.heading, 1, pan ** 4);
         if (frame % 4 === 1) refreshControls();
         return;
@@ -1142,8 +1170,9 @@ async function boot() {
       }
       if (overviewOpacity > 0) drawFleetOverview(view, overviewOpacity);
       if (destination) drawDestination(context, view, destination.berth);
+      drawRegatta(context, view, regatta, {sprite: regattaBuoy, time, guiding: regattaPanel.guiding});
       if (phase === 'sailing' && !boat.moored && windGuide.checked && overviewOpacity < .25) {
-        drawWindGuide(context, view, boatOverlay, wind.at(boat), destination?.berth);
+        drawWindGuide(context, view, boatOverlay, wind.at(boat), (regattaPanel.guiding && regatta.target()) || destination?.berth);
       }
       if (overviewOpacity > 0) liveOverview.drawLabels(context, view, boatPosition, boat.heading, overviewOpacity, 0);
       context.save();
@@ -1156,7 +1185,7 @@ async function boot() {
       context.restore();
       if (frame % 4 === 1) {
         refreshControls();
-        drawChart(chartBoat(), destination, fleet.boats);
+        drawChart(chartBoat(), destination, fleet.boats, regatta);
       }
     },
   });
@@ -1170,7 +1199,7 @@ async function boot() {
 
   function openChart() {
     drawOverview ??= createChart(element('map-overview'), map, true);
-    drawOverview(chartBoat(), destination, fleet.boats);
+    drawOverview(chartBoat(), destination, fleet.boats, regatta);
     refreshTraffic();
     refreshChartBerths(ports.find(port => port.id === destination?.id), Number(berthPicker.value));
     openDialog(mapDialog);
@@ -1205,6 +1234,8 @@ async function boot() {
       crows: crows.status(), fishRises: fishRises.status(),
       storks: storks.birds.map(({x, y, mode, altitude, feed}) => ({x, y, mode, altitude, feed})),
       showTrack, trackPoints: track.length, destination, fleet: fleet.status(),
+      regatta: {phase: regatta.phase, time: regatta.time, target: regatta.target(), course: regatta.course,
+        standings: regatta.standings().map(({name, mark, status, recall, splits, finished}) => ({name, mark, status, recall, splits, finished}))},
     });
   }
 }

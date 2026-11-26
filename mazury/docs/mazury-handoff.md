@@ -1,6 +1,6 @@
 # Mazury session handoff
 
-Updated 25 November 2026.
+Updated 26 November 2026.
 
 ## Current build
 
@@ -148,3 +148,11 @@ All 98 tests pass. Chrome loaded all five examples and checked Mazury’s live o
 The game, source artwork, map, project notes, and 68 gameplay tests live under `mazury/`. The game imports the Slice Engine source from the same checkout. Use `npm --prefix mazury test` from the workspace root and open the game at `/mazury/`. The separate Slice Engine archive contains the engine, generic tools, and four engine examples, and passed all 30 engine tests after extraction.
 
 Chrome verified the moved game at `/mazury/`, including approach, neutral coasting, mooring, going ashore, boarding, and departure at the original Ekomarina berth and West quay 10. The moved artwork tools exported and refitted a yacht template. The Oracle deployment still uses the path layout of release `96ccda68ff92`.
+
+## Niegocin regatta preview
+
+Mazury `0.2.0-regatta.1` adds a fleet race off Ekomarina. **Sail out** and select **Regatta** for the buoy bearing. Enter from within 24 m, then raise the main and enter the shaded staging area to start the 24-second clock. Three volunteer crews are entered independently of the traffic setting. The engine and boost are disabled during the competitor's race. A windward first leg leads to three port roundings and a separate finish line. Ordinary early starters can return behind the line. **Strict start** scores an early crossing as DNF. See the [race research and sailing instructions](mazury-regatta-research.md).
+
+The new orange buoy uses a painted 16-slice atlas. Chrome checked the assembled model in the rotating viewer and checked the chart and registration guidance at 390 px width. A Chrome playthrough used the normal controls to reach the buoy, register, arm the countdown, start legally, round all three marks and finish second. The tests cover both start modes, exact signal timing, mark order and direction, weather cancellation, and a zero-traffic race in which all three volunteers finish. All 74 Mazury tests and all 30 Slice Engine tests pass.
+
+The regatta preview is versioned separately from the engine and remains undeployed. The prior Oracle deployment stays on its existing release. Safari and broader race balancing in variable conditions remain open for this preview.

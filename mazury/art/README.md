@@ -37,10 +37,17 @@ The boats, buildings, trees, jetty, and birds use the PNG slice sheet format des
 | Cormorant | 43 × 29 | 12 | 4 |
 | Crow | 37 × 23 | 14 | 4 |
 | White stork | 47 × 39 | 25 | 5 |
+| Regatta buoy | 15 × 15 | 16 | 4 |
 
 The bird templates live in [templates/birds.js](templates/birds.js). Export their sheets with the same tool and pass the chosen species name. The mallard, cormorant, crow, and stork reserve the outside of each slice for wings. [bird-view.js](../bird-view.js) uses those voxels to bake five wing positions. The swimming mallard and perched crow use the center of each slice, which includes the folded wings.
 
 ## Built-in ImageGen prompts
+
+### Regatta buoy
+
+Export `regattaBuoy` from [regatta-buoy.js](templates/regatta-buoy.js) with four columns. The built-in ImageGen tool painted a 16× enlargement of the template. Fit the output to the original 60 × 60 sheet as `regatta-buoy-slices.png`. Registration, line ends, and numbered marks share the same stack.
+
+> Production paint-over on the given registered transparent voxel slice atlas for an original Lake Niegocin sailing regatta buoy. Keep precisely the 4 columns by 4 rows, square canvas, silhouette, alignment and size of all 16 horizontal cross sections, row-major lowest first. Paint only existing opaque pixels. Sun-warmed safety-orange inflatable coated fabric with weathered burnt-orange bottom, fine subdued radial seam stitching in burnt sienna, bright honey-orange sheen, and preserve the cream reflective band in slices 7–8. Last tiny pixel is a pale lifting eye. Consistent shading and registered seam positions across adjacent slices, crisp pixel art. Empty space remains genuinely transparent. No captions, assembled view, scenery, additional objects, frames, new margins, or grid.
 
 ### Lakeside trees
 

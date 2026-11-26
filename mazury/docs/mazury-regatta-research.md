@@ -1,0 +1,26 @@
+# Lake Niegocin regatta research
+
+Research for Mazury, 26 November 2026.
+
+## Starts, marks and scoring
+
+- **Start.** World Sailing's standard sequence uses warning, preparatory, one-minute and start signals at 5, 4, 1 and 0 minutes. The whole hull must be on the pre-start side at or after the signal before any part crosses between the starting marks towards the course. Under the ordinary P-flag start, an early boat at the signal is individually recalled with flag X and one sound. It can return entirely to the pre-start side and cross correctly. An I-flag start adds a requirement to return around an end if the boat was over the line or its extensions in the last minute. [World Sailing RRS, Start and rules 26, 29.1 and 30.1][rrs]
+- **Course.** The sailing instructions set the order and side of the marks. Imagine pulling a string laid along the boat's track taut. It must pass the marks on the prescribed sides and in order, wrap against designated rounding marks, and pass through any gate from the previous leg. The boat can correct a course error before finishing. A normal finish is a hull crossing between the finish marks from the course side. [World Sailing RRS, Sail the Course, Finish, rule 28 and Appendix S][rrs]
+- **Scores and clocks.** OCS applies when a boat is over at the start signal and fails to start properly, or breaches the I-flag rule. DNF means Did Not Finish and can apply when a boat misses a published finishing window. DNS covers other failures to start, apart from absence from the start area. NSC covers course errors when a more specific code does not apply. A race time limit concerns the first boat to sail the course. If nobody does so by that limit, Rule 35 calls for abandoning the race. A finishing window starts when the first boat sails the course. [World Sailing RRS, rule 35 and Appendices A10 and S §12][rrs]
+
+## How lake events run
+
+- **Lake Niegocin, Polish Academic Sailing Championships 2025.** The courses were set in the north and centre of the lake. The instructions specify orange conical course buoys, a start between orange flags on two committee vessels and a finish between a blue flag and a yellow buoy. The two fleets sailed inner and outer trapezoids. The instructions scored starts more than four minutes after the signal as DNS. Each fleet's finish closed 15 minutes after its first valid finisher. The event set no overall race time limit. [AZS sailing instructions, §§8–15 and Appendix 1][azs]
+- **Lake Kegonsa Sailors Club.** The club usually sets one to three windward–leeward laps and can set a triangle. Its championship courses use a two-buoy leeward gate. Boats enter between both marks from the preceding leg, then choose either one to round. Its championship races target 45 minutes with a 60-minute maximum. The club uses a local round-the-ends requirement and tries to hail early boats. [Lake Kegonsa sailing instructions, §§9–15][kegonsa]
+
+## Mazury sailing instructions
+
+- **Entry.** Sail up to the orange registration buoy offshore from Ekomarina. Registration puts three AI volunteers in the staging area even when ambient traffic is off. The wind sets the orientation of the triangular course at registration. The committee chooses a layout with shoreline clearance. The first leg rewards tacking, the middle legs reward trim and early turns, and the last leg crosses a separate finish line.
+- **Warning.** Enter the shaded area with the main raised, anchor weighed and the yacht below 13 knots. The 24-second clock is measured in simulation seconds. The engine and boost are disabled for competitors from the warning signal. A thunderstorm or high wind closes racing.
+- **Start.** Cross the finite starting line toward the course after the audible and visual start signal. In the standard event, an early boat can return entirely behind the line and cross again. The start closes 36 seconds after the horn. An uncorrected recall scores OCS and a missed start scores DNS. Strict start applies immediate DNF to an early crossing as a game option.
+- **Course.** Round all three orange marks to port in order. Cross the short directional gate beside each buoy. The dashed gate stands in for the real-world taut-string test and shows where a missed pass can be corrected. A valid finish crosses the separate finish line in the arrow direction after all three marks.
+- **Scoring.** Results use elapsed time from the start signal. The course closes after six minutes or 125 seconds after the first finisher, whichever comes first. Retirement, capsize and missing the finishing window score DNF. The event retains Mazury’s existing small-craft collision avoidance and low-speed steering assist. Real regattas can have separate class starts, more complex courses, flag rules and protests.
+
+[rrs]: https://www.sailing.org/wp-content/uploads/2026/04/2025-2028-RRS-with-Changes-and-Corrections.pdf
+[azs]: https://azs.waw.pl/wp-content/uploads/2025/05/2425_amp_zeglarstwo_instrukcja.pdf
+[kegonsa]: https://lksc.org/local-sailing-instructions/

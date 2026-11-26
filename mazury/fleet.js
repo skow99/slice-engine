@@ -15,13 +15,14 @@ const stopped = boat => boat.moored || boat.capsized;
 let sunset = 18 * 60;
 while (sunAt(sunset).elevation > 0) sunset++;
 
-export function createFleet(lake, bounds, ports) {
+export function createFleet(lake, bounds, ports, regatta) {
   let navigation;
   let boats = [];
   let time = 0;
   const fairways = new Map();
   const lane = boat => boat.slot?.lane ?? boat.port;
   const navigable = () => navigation ??= createFleetNavigation(lake, bounds, ports);
+  const allBoats = () => regatta ? [...boats, ...regatta.boats] : boats;
 
   function clearFairway(boat) {
     if (fairways.get(lane(boat)) === boat) fairways.delete(lane(boat));
@@ -458,16 +459,32 @@ export function createFleet(lake, bounds, ports) {
   }
 
   function update(dt, {player, playerFixed, minute, sun, weather, wind}) {
-    if (!boats.length) return;
+    const vessels = allBoats();
+    if (!vessels.length) return;
     time += dt;
-    const traffic = [player, ...boats];
-    for (const boat of boats) {
+    const traffic = [player, ...vessels];
+    for (const boat of vessels) {
       const air = wind.at(boat);
+      boat.previous = {x: boat.x, y: boat.y};
+      if (boat.regatta) {
+        const pilot = regatta.pilot(boat, air);
+        if (!pilot) {
+          boat.jib = boat.sail = false;
+          stepBoat(boat, 0, dt, lake, air);
+          continue;
+        }
+        const {heading, reef, speedLimit} = pilot;
+        const avoidance = avoidTraffic(boat, traffic, heading, Math.max(2, boatSpeed(boat)), air.from, navigable().leg);
+        const safeHeading = avoidance && avoidance.rule !== 'hold' && !avoidance.brake
+          && Math.abs(angleDelta(avoidance.heading, air.from)) > .68 ? avoidance.heading : heading;
+        const command = drive(boat, safeHeading, speedLimit, true, air, reef);
+        stepBoat(boat, command.rudder, dt, lake, air, {...command, speedLimit: avoidance?.brake ? speedLimit * .6 : speedLimit});
+        continue;
+      }
       if (!boat.command || time >= boat.nextDecision) {
         boat.command = decide(boat, player, minute, sun, weather, air, traffic);
         boat.nextDecision = time + .17;
       }
-      boat.previous = {x: boat.x, y: boat.y};
       stepBoat(boat, boat.command.rudder, dt, lake, air, boat.command);
       boat.sailed += distance(boat, boat.previous);
     }
@@ -484,7 +501,8 @@ export function createFleet(lake, bounds, ports) {
   }
 
   return {
-    get boats() { return boats; },
+    get boats() { return allBoats(); },
+    get trafficCount() { return boats.length; },
     get moorings() { return navigable().moorings; },
     setCount, update,
     berthTaken: (port, player) => boats.some(boat => distance(boat, port.berth) < berthRange && boat !== player),
